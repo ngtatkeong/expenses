@@ -62,6 +62,17 @@ export default function Users() {
     load();
   }
 
+  async function resetPassword(u: User) {
+    const next = prompt(`Set a new password for ${u.name} (min 8 characters):`);
+    if (!next) return;
+    if (next.length < 8) {
+      alert("Password must be at least 8 characters.");
+      return;
+    }
+    await api.patch(`/users/${u.id}`, { password: next });
+    alert(`Password reset for ${u.name}. Share it with them securely.`);
+  }
+
   const managers = users.filter(
     (u) => u.role === "MANAGER" || u.role === "ADMIN",
   );
@@ -151,6 +162,7 @@ export default function Users() {
               <th>Department</th>
               <th>Manager</th>
               <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -198,6 +210,14 @@ export default function Users() {
                     onClick={() => toggleActive(u)}
                   >
                     {u.active ? "Deactivate" : "Reactivate"}
+                  </button>
+                </td>
+                <td>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => resetPassword(u)}
+                  >
+                    Reset password
                   </button>
                 </td>
               </tr>

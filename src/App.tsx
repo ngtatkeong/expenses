@@ -11,6 +11,7 @@ import Users from "./pages/Users";
 import SettingsPage from "./pages/SettingsPage";
 import FiscalYears from "./pages/FiscalYears";
 import Reports from "./pages/Reports";
+import Account from "./pages/Account";
 import "./App.css";
 
 function RequireAdmin({ children }: { children: ReactNode }) {
@@ -75,6 +76,11 @@ function Shell() {
               </NavLink>
             </>
           )}
+
+          <div className="nav-section-label">Account</div>
+          <NavLink to="/account" className="nav-link">
+            My Account
+          </NavLink>
         </nav>
         <div className="sidebar-footer">
           <div className="user-name">{user?.name}</div>
@@ -131,6 +137,7 @@ function Shell() {
               </RequireAdmin>
             }
           />
+          <Route path="/account" element={<Account />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
