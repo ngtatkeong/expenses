@@ -41,25 +41,42 @@ export default function Users() {
     }
   }
 
+  async function runUserUpdate(
+    action: () => Promise<unknown>,
+  ): Promise<boolean> {
+    setError("");
+    try {
+      await action();
+      load();
+      return true;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That change failed");
+      load(); // re-sync selects/inputs back to the real (unchanged) server state
+      return false;
+    }
+  }
+
   async function updateRole(u: User, role: Role) {
-    await api.patch(`/users/${u.id}`, { role });
-    load();
+    await runUserUpdate(() => api.patch(`/users/${u.id}`, { role }));
   }
 
   async function updateManager(u: User, managerId: string) {
-    await api.patch(`/users/${u.id}`, { managerId: managerId || null });
-    load();
+    await runUserUpdate(() =>
+      api.patch(`/users/${u.id}`, { managerId: managerId || null }),
+    );
   }
 
   async function updateDepartment(u: User, department: string) {
     if (department === (u.department ?? "")) return; // no change, skip the request
-    await api.patch(`/users/${u.id}`, { department: department || null });
-    load();
+    await runUserUpdate(() =>
+      api.patch(`/users/${u.id}`, { department: department || null }),
+    );
   }
 
   async function toggleActive(u: User) {
-    await api.patch(`/users/${u.id}`, { active: !u.active });
-    load();
+    await runUserUpdate(() =>
+      api.patch(`/users/${u.id}`, { active: !u.active }),
+    );
   }
 
   async function resetPassword(u: User) {
@@ -69,8 +86,10 @@ export default function Users() {
       alert("Password must be at least 8 characters.");
       return;
     }
-    await api.patch(`/users/${u.id}`, { password: next });
-    alert(`Password reset for ${u.name}. Share it with them securely.`);
+    const ok = await runUserUpdate(() =>
+      api.patch(`/users/${u.id}`, { password: next }),
+    );
+    if (ok) alert(`Password reset for ${u.name}. Share it with them securely.`);
   }
 
   const managers = users.filter(
@@ -153,6 +172,12 @@ export default function Users() {
       </section>
 
       <section className="panel">
+        <h2>All users</h2>
+        {error && (
+          <p className="error-text" style={{ marginBottom: 10 }}>
+            {error}
+          </p>
+        )}
         <table className="data-table">
           <thead>
             <tr>

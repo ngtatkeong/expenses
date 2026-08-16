@@ -73,6 +73,27 @@ usersRouter.patch("/:id", requireRole("ADMIN"), async (req, res) => {
 
   const { name, role, department, managerId, active, password } =
     req.body ?? {};
+
+  // Guard against locking everyone out of the admin section: block a change
+  // that would leave zero active ADMIN accounts (demoting the last admin,
+  // or deactivating them). This is what actually happened once already —
+  // a lone admin used this same role dropdown on their own row and got
+  // silently locked out with no way to undo it themselves.
+  const losingAdminStatus =
+    before.role === "ADMIN" &&
+    ((role !== undefined && role !== "ADMIN") || active === false);
+  if (losingAdminStatus) {
+    const otherActiveAdmins = await prisma.user.count({
+      where: { role: "ADMIN", active: true, id: { not: id } },
+    });
+    if (otherActiveAdmins === 0) {
+      return res.status(409).json({
+        error:
+          "Can't remove the last remaining admin — promote another user to Admin first.",
+      });
+    }
+  }
+
   const data: Record<string, unknown> = {};
   if (name !== undefined) data.name = name;
   if (role !== undefined) data.role = role;
