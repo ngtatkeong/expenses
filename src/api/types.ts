@@ -94,7 +94,16 @@ export interface FiscalYearSummary {
   lockedAt: string | null;
 }
 
+export interface SpendItem {
+  id: string;
+  vendor: string;
+  category: string;
+  amount: number;
+  date: string;
+}
+
 export interface ReportSummary {
+  items: SpendItem[];
   byStatus: { status: ExpenseStatus; total: number; count: number }[];
   byCategory: { name: string; total: number }[];
   byDepartment: { name: string; total: number }[];

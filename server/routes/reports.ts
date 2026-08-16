@@ -24,62 +24,90 @@ function buildFilterWhere(
   return where;
 }
 
-// Company-wide dashboard data — Admin/Finance only (Employees/Managers use
-// the expense list itself, which is already scoped to what they can see).
-reportsRouter.get("/summary", requireRole("ADMIN"), async (req, res) => {
-  const where = buildFilterWhere(req.query as Record<string, unknown>);
-
-  const [byStatus, expenses] = await Promise.all([
-    prisma.expense.groupBy({
-      by: ["status"],
-      where,
-      _sum: { amountTotal: true },
-      _count: { _all: true },
-    }),
-    prisma.expense.findMany({
-      where,
-      include: { lineItems: { include: { category: true } } },
-      orderBy: { date: "asc" },
-    }),
-  ]);
-
-  const byCategory = new Map<string, number>();
-  const byDepartment = new Map<string, number>();
-  const byMonth = new Map<string, number>();
-
-  for (const e of expenses) {
-    const dept = e.department || "Unassigned";
-    byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + e.amountTotal);
-
-    const month = e.date.toISOString().slice(0, 7); // YYYY-MM
-    byMonth.set(month, (byMonth.get(month) ?? 0) + e.amountTotal);
-
-    for (const li of e.lineItems) {
-      const name = li.category.name;
-      byCategory.set(name, (byCategory.get(name) ?? 0) + li.amount);
+// Dashboard summary. Admin/Finance see company-wide numbers; Managers see
+// the same breakdown scoped to their own expenses plus their direct
+// reports' — Employees don't get this (their own expense list already
+// shows everything relevant to them individually).
+reportsRouter.get(
+  "/summary",
+  requireRole("ADMIN", "MANAGER"),
+  async (req, res) => {
+    const where = buildFilterWhere(req.query as Record<string, unknown>);
+    if (req.user!.role === "MANAGER") {
+      where.OR = [
+        { submittedById: req.user!.id },
+        { submittedBy: { managerId: req.user!.id } },
+      ];
     }
-  }
 
-  res.json({
-    byStatus: byStatus.map((s) => ({
-      status: s.status,
-      total: s._sum.amountTotal ?? 0,
-      count: s._count._all,
-    })),
-    byCategory: [...byCategory.entries()]
-      .map(([name, total]) => ({ name, total }))
-      .sort((a, b) => b.total - a.total),
-    byDepartment: [...byDepartment.entries()]
-      .map(([name, total]) => ({ name, total }))
-      .sort((a, b) => b.total - a.total),
-    byMonth: [...byMonth.entries()]
-      .map(([month, total]) => ({ month, total }))
-      .sort((a, b) => a.month.localeCompare(b.month)),
-    flaggedCount: expenses.filter((e) => e.flagged).length,
-    totalAmount: expenses.reduce((s, e) => s + e.amountTotal, 0),
-    expenseCount: expenses.length,
-  });
-});
+    const [byStatus, expenses] = await Promise.all([
+      prisma.expense.groupBy({
+        by: ["status"],
+        where,
+        _sum: { amountTotal: true },
+        _count: { _all: true },
+      }),
+      prisma.expense.findMany({
+        where,
+        include: { lineItems: { include: { category: true } } },
+        orderBy: { date: "asc" },
+      }),
+    ]);
+
+    const byCategory = new Map<string, number>();
+    const byDepartment = new Map<string, number>();
+    const byMonth = new Map<string, number>();
+
+    for (const e of expenses) {
+      const dept = e.department || "Unassigned";
+      byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + e.amountTotal);
+
+      const month = e.date.toISOString().slice(0, 7); // YYYY-MM
+      byMonth.set(month, (byMonth.get(month) ?? 0) + e.amountTotal);
+
+      for (const li of e.lineItems) {
+        const name = li.category.name;
+        byCategory.set(name, (byCategory.get(name) ?? 0) + li.amount);
+      }
+    }
+
+    // Flattened line items, ranked by magnitude — powers the "Expense Item
+    // Comparison" list, which shows individual logged items rather than
+    // category aggregates.
+    const items = expenses
+      .flatMap((e) =>
+        e.lineItems.map((li) => ({
+          id: li.id,
+          vendor: e.vendor,
+          category: li.category.name,
+          amount: li.amount,
+          date: e.date.toISOString(),
+        })),
+      )
+      .sort((a, b) => b.amount - a.amount);
+
+    res.json({
+      items,
+      byStatus: byStatus.map((s) => ({
+        status: s.status,
+        total: s._sum.amountTotal ?? 0,
+        count: s._count._all,
+      })),
+      byCategory: [...byCategory.entries()]
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total),
+      byDepartment: [...byDepartment.entries()]
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total),
+      byMonth: [...byMonth.entries()]
+        .map(([month, total]) => ({ month, total }))
+        .sort((a, b) => a.month.localeCompare(b.month)),
+      flaggedCount: expenses.filter((e) => e.flagged).length,
+      totalAmount: expenses.reduce((s, e) => s + e.amountTotal, 0),
+      expenseCount: expenses.length,
+    });
+  },
+);
 
 reportsRouter.get("/export.csv", requireRole("ADMIN"), async (req, res) => {
   const where = buildFilterWhere(req.query as Record<string, unknown>);

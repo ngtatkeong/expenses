@@ -1,32 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
 import { useAuth } from "../store/AuthContext";
 import { api } from "../api/client";
-import type { Expense, ReportSummary } from "../api/types";
+import type { Expense, ReportSummary, SpendItem } from "../api/types";
 import StatusBadge from "../components/StatusBadge";
+import SpendBreakdown from "../components/SpendBreakdown";
 import { formatMoney, formatDate } from "../utils/format";
-
-const COLORS = [
-  "#0f766e",
-  "#0ea5e9",
-  "#a855f7",
-  "#f59e0b",
-  "#ef4444",
-  "#10b981",
-  "#6366f1",
-];
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -35,6 +14,9 @@ export default function Dashboard() {
   const [approvalQueueCount, setApprovalQueueCount] = useState<number | null>(
     null,
   );
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const isLead = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   useEffect(() => {
     if (!user) return;
@@ -42,39 +24,96 @@ export default function Dashboard() {
       .get<Expense[]>(`/expenses?submittedById=${user.id}`)
       .then(setMyExpenses)
       .catch(() => {});
-    if (user?.role === "ADMIN") {
+    if (isLead) {
       api
         .get<ReportSummary>("/reports/summary")
         .catch(() => null)
         .then((s) => s && setSummary(s));
-    }
-    if (user?.role === "MANAGER" || user?.role === "ADMIN") {
       api
         .get<Expense[]>("/expenses?status=PENDING_APPROVAL")
         .then((list) => setApprovalQueueCount(list.length))
         .catch(() => {});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const pending = myExpenses.filter(
     (e) => e.status === "PENDING_APPROVAL" || e.status === "INFO_REQUESTED",
   ).length;
   const drafts = myExpenses.filter((e) => e.status === "DRAFT").length;
+  const myCurrency = myExpenses[0]?.currency;
+
+  // Employees don't get the /reports/summary endpoint (it's team/company
+  // scoped) — derive the same item/category breakdown from their own
+  // expenses client-side instead, so everyone sees a breakdown of *something*.
+  const personalBreakdown = useMemo(() => {
+    const items: SpendItem[] = myExpenses
+      .flatMap((e) =>
+        e.lineItems.map((li) => ({
+          id: li.id,
+          vendor: e.vendor,
+          category: li.category.name,
+          amount: li.amount,
+          date: e.date,
+        })),
+      )
+      .sort((a, b) => b.amount - a.amount);
+    const byCategory = new Map<string, number>();
+    for (const i of items)
+      byCategory.set(i.category, (byCategory.get(i.category) ?? 0) + i.amount);
+    return {
+      items,
+      byCategory: [...byCategory.entries()]
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total),
+    };
+  }, [myExpenses]);
 
   return (
     <div className="page">
-      <header className="page-header">
+      <div className="dash-banner">
         <div>
-          <h1>Welcome, {user?.name}</h1>
-          <p className="muted">
-            Role:{" "}
-            {user ? user.role.charAt(0) + user.role.slice(1).toLowerCase() : ""}
-          </p>
+          <div className="dash-banner-title-row">
+            <h1>Expenses</h1>
+            <span className="dash-banner-badge">{user?.role}</span>
+          </div>
+          <div className="dash-banner-sub">
+            Welcome, {user?.name} ·{" "}
+            {isLead ? "Team & company breakdown" : "Your expense tracking"}
+          </div>
         </div>
         <Link to="/expenses/new" className="btn">
-          + New Expense
+          + Add Expense
         </Link>
-      </header>
+      </div>
+
+      {isLead && approvalQueueCount !== null && approvalQueueCount > 0 && (
+        <div className="callout callout-warn">
+          {approvalQueueCount} expense(s) waiting for your approval.{" "}
+          <Link to="/expenses?status=PENDING_APPROVAL">Review now →</Link>
+        </div>
+      )}
+
+      {isLead ? (
+        summary && (
+          <SpendBreakdown
+            title={user?.role === "ADMIN" ? "Company Spend" : "Team Spend"}
+            items={summary.items}
+            byCategory={summary.byCategory}
+            onCategoryClick={setActiveCategory}
+            activeCategory={activeCategory}
+          />
+        )
+      ) : (
+        <SpendBreakdown
+          title="My Spend"
+          items={personalBreakdown.items}
+          byCategory={personalBreakdown.byCategory}
+          currency={myCurrency}
+          onCategoryClick={setActiveCategory}
+          activeCategory={activeCategory}
+        />
+      )}
 
       <section className="grid-4">
         <div className="stat-card">
@@ -89,70 +128,13 @@ export default function Dashboard() {
           <div className="stat-value">{pending}</div>
           <div className="stat-label">Awaiting action</div>
         </div>
-        {approvalQueueCount !== null && (
+        {summary && (
           <div className="stat-card">
-            <div className="stat-value">{approvalQueueCount}</div>
-            <div className="stat-label">In approval queue</div>
+            <div className="stat-value">{summary.flaggedCount}</div>
+            <div className="stat-label">Flagged for review</div>
           </div>
         )}
       </section>
-
-      {(user?.role === "MANAGER" || user?.role === "ADMIN") &&
-        approvalQueueCount !== null &&
-        approvalQueueCount > 0 && (
-          <div className="callout callout-warn">
-            {approvalQueueCount} expense(s) waiting for your approval.{" "}
-            <Link to="/expenses?status=PENDING_APPROVAL">Review now →</Link>
-          </div>
-        )}
-
-      {summary && (
-        <section className="grid-3">
-          <div className="panel">
-            <h2>Spend by category</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={summary.byCategory}
-                  dataKey="total"
-                  nameKey="name"
-                  outerRadius={80}
-                  label={(d) => d.name}
-                >
-                  {summary.byCategory.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => formatMoney(Number(v))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="panel">
-            <h2>Spend by department</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={summary.byDepartment}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => formatMoney(Number(v))} />
-                <Bar dataKey="total" fill="#0f766e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="panel">
-            <h2>Spend by month</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={summary.byMonth}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => formatMoney(Number(v))} />
-                <Bar dataKey="total" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
 
       <section className="panel">
         <div className="panel-header">

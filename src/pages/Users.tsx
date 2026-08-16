@@ -51,6 +51,12 @@ export default function Users() {
     load();
   }
 
+  async function updateDepartment(u: User, department: string) {
+    if (department === (u.department ?? "")) return; // no change, skip the request
+    await api.patch(`/users/${u.id}`, { department: department || null });
+    load();
+  }
+
   async function toggleActive(u: User) {
     await api.patch(`/users/${u.id}`, { active: !u.active });
     load();
@@ -162,7 +168,15 @@ export default function Users() {
                     <option value="ADMIN">Admin/Finance</option>
                   </select>
                 </td>
-                <td>{u.department ?? "—"}</td>
+                <td>
+                  <input
+                    type="text"
+                    defaultValue={u.department ?? ""}
+                    placeholder="No department"
+                    style={{ width: 140 }}
+                    onBlur={(e) => updateDepartment(u, e.target.value.trim())}
+                  />
+                </td>
                 <td>
                   <select
                     value={u.managerId ?? ""}
