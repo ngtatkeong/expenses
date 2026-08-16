@@ -14,7 +14,7 @@ const COLORS = [
   "#ec4899",
 ];
 
-interface CategoryTotal {
+interface NamedTotal {
   name: string;
   total: number;
 }
@@ -22,7 +22,8 @@ interface CategoryTotal {
 interface SpendBreakdownProps {
   title: string;
   items: SpendItem[];
-  byCategory: CategoryTotal[];
+  byCategory: NamedTotal[];
+  byDepartment?: NamedTotal[];
   currency?: string;
   onCategoryClick?: (name: string | null) => void;
   activeCategory?: string | null;
@@ -32,6 +33,7 @@ export default function SpendBreakdown({
   title,
   items,
   byCategory,
+  byDepartment,
   currency = "SGD",
   onCategoryClick,
   activeCategory,
@@ -45,6 +47,8 @@ export default function SpendBreakdown({
   const maxAmount = visibleItems[0]?.amount ?? 1;
   const topOutlay = items[0];
   const average = items.length ? total / items.length : 0;
+  const deptTotal = byDepartment?.reduce((s, d) => s + d.total, 0) ?? 0;
+  const maxDept = byDepartment?.[0]?.total ?? 1;
 
   return (
     <>
@@ -238,6 +242,47 @@ export default function SpendBreakdown({
           </p>
         </div>
       </section>
+
+      {byDepartment && byDepartment.length > 0 && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Spend by Department</h2>
+            <span className="muted small">
+              {byDepartment.length} department
+              {byDepartment.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="item-comparison-list">
+            {byDepartment.map((d, i) => (
+              <div key={d.name} className="item-comparison-row">
+                <div className="item-comparison-top">
+                  <span
+                    className="legend-dot"
+                    style={{ background: COLORS[i % COLORS.length] }}
+                  />
+                  <span className="item-vendor">{d.name}</span>
+                  <span className="item-pct">
+                    {deptTotal ? ((d.total / deptTotal) * 100).toFixed(1) : "0"}
+                    %
+                  </span>
+                  <span className="item-amount">
+                    {formatMoney(d.total, currency)}
+                  </span>
+                </div>
+                <div className="item-bar-track">
+                  <div
+                    className="item-bar-fill"
+                    style={{
+                      width: `${maxDept ? (d.total / maxDept) * 100 : 0}%`,
+                      background: COLORS[i % COLORS.length],
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   );
 }

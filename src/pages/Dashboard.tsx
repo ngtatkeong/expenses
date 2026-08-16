@@ -61,9 +61,17 @@ export default function Dashboard() {
     const byCategory = new Map<string, number>();
     for (const i of items)
       byCategory.set(i.category, (byCategory.get(i.category) ?? 0) + i.amount);
+    const byDepartment = new Map<string, number>();
+    for (const e of myExpenses) {
+      const dept = e.department || "Unassigned";
+      byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + e.amountTotal);
+    }
     return {
       items,
       byCategory: [...byCategory.entries()]
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total),
+      byDepartment: [...byDepartment.entries()]
         .map(([name, total]) => ({ name, total }))
         .sort((a, b) => b.total - a.total),
     };
@@ -100,6 +108,7 @@ export default function Dashboard() {
             title={user?.role === "ADMIN" ? "Company Spend" : "Team Spend"}
             items={summary.items}
             byCategory={summary.byCategory}
+            byDepartment={summary.byDepartment}
             onCategoryClick={setActiveCategory}
             activeCategory={activeCategory}
           />
@@ -109,6 +118,7 @@ export default function Dashboard() {
           title="My Spend"
           items={personalBreakdown.items}
           byCategory={personalBreakdown.byCategory}
+          byDepartment={personalBreakdown.byDepartment}
           currency={myCurrency}
           onCategoryClick={setActiveCategory}
           activeCategory={activeCategory}
