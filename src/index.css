@@ -1,0 +1,62 @@
+:root {
+  --text: #4b5563;
+  --text-h: #0f172a;
+  --bg: #f6f7fb;
+  --panel-bg: #ffffff;
+  --border: #e5e7eb;
+  --accent: #0f766e;
+  --accent-bg: rgba(15, 118, 110, 0.08);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.08);
+  --warn: #b45309;
+  --warn-bg: rgba(180, 83, 9, 0.1);
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #cbd5e1;
+
+  font:
+    15px/1.5 system-ui,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}

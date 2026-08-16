@@ -1,0 +1,17 @@
+[Unit]
+Description=Expense Management System (Node/Express + Prisma/SQLite)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/expense/expense
+EnvironmentFile=/opt/expense/expense/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx tsx server/index.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

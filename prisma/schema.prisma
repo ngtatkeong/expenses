@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING_APPROVAL // manager review, only used when approval workflow is enabled
+  APPROVED // ready for finance to pay (approval workflow bypassed lands here directly too)
+  REJECTED
+  INFO_REQUESTED // manager asked submitter for more info; submitter resubmits -> PENDING_APPROVAL
+  PAID
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  INFO_REQUESTED
+  INFO_PROVIDED
+  PAID
+  REOPENED
+  DELETED
+  RECEIPT_ADDED
+  RECEIPT_REMOVED
+  SETTINGS_CHANGED
+  CATEGORY_CREATED
+  CATEGORY_UPDATED
+  CATEGORY_DELETED
+  FISCAL_YEAR_LOCKED
+  FISCAL_YEAR_UNLOCKED
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(EMPLOYEE)
+  department   String?
+  active       Boolean  @default(true)
+  managerId    String?
+  manager      User?    @relation("ManagerReports", fields: [managerId], references: [id])
+  reports      User[]   @relation("ManagerReports")
+  createdAt    DateTime @default(now())
+
+  expensesSubmitted Expense[]  @relation("SubmittedBy")
+  expensesApproving Expense[]  @relation("CurrentApprover")
+  receipts          Receipt[]
+  auditLogs         AuditLog[]
+  sessions          Session[]
+}
+
+// Custom session store for express-session, so login sessions survive
+// service restarts/redeploys instead of living only in process memory.
+model Session {
+  sid       String   @id
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  data      String // JSON blob of session contents
+  expiresAt DateTime
+}
+
+model Settings {
+  id                      Int     @id @default(1)
+  approvalWorkflowEnabled Boolean @default(true)
+  defaultCurrency         String  @default("SGD")
+  fiscalYearStartMonth    Int     @default(1) // 1 = January
+  receiptRequiredAbove    Float   @default(100) // flag missing receipt above this amount
+  updatedAt               DateTime @updatedAt
+}
+
+model ExpenseCategory {
+  id                     String   @id @default(uuid())
+  name                   String   @unique
+  description            String?
+  spendingLimitPerExpense Float?  // null = no limit
+  active                 Boolean  @default(true)
+  createdAt              DateTime @default(now())
+
+  lineItems ExpenseLineItem[]
+}
+
+model Expense {
+  id                String        @id @default(uuid())
+  submittedById     String
+  submittedBy       User          @relation("SubmittedBy", fields: [submittedById], references: [id])
+  date              DateTime
+  vendor            String
+  amountTotal       Float
+  currency          String        @default("SGD")
+  description       String?
+  department        String?
+  status            ExpenseStatus @default(DRAFT)
+  fiscalYear        Int
+  currentApproverId String?
+  currentApprover   User?         @relation("CurrentApprover", fields: [currentApproverId], references: [id])
+  flagged           Boolean       @default(false) // policy violation flag (e.g. missing receipt over threshold)
+  flagReason        String?
+  locked            Boolean       @default(false) // true once its fiscal year is locked
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  lineItems ExpenseLineItem[]
+  receipts  Receipt[]
+  auditLogs AuditLog[]
+
+  @@index([submittedById])
+  @@index([status])
+  @@index([fiscalYear])
+}
+
+model ExpenseLineItem {
+  id         String          @id @default(uuid())
+  expenseId  String
+  expense    Expense         @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount     Float
+  note       String?
+
+  @@index([expenseId])
+}
+
+model Receipt {
+  id           String   @id @default(uuid())
+  expenseId    String
+  expense      Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  filename     String // name on disk, uploads/<expenseId>/<filename>
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  uploadedAt   DateTime @default(now())
+
+  @@index([expenseId])
+}
+
+// Strict, append-only audit trail — also doubles as the UI's "what happened
+// to this expense" history (filtered by expenseId), so there's a single
+// source of truth instead of two logs that could drift out of sync. No update/delete endpoint is ever
+// exposed for this table, and a DB-level trigger (see migration.sql)
+// additionally blocks UPDATE/DELETE at the SQLite layer itself.
+model AuditLog {
+  id         String      @id @default(uuid())
+  entityType String // "Expense" | "ExpenseCategory" | "Settings" | "User" | "FiscalYearLock"
+  entityId   String
+  action     AuditAction
+  actorId    String
+  actor      User        @relation(fields: [actorId], references: [id])
+  before     String? // JSON snapshot before the change
+  after      String? // JSON snapshot after the change
+  comment    String?
+  createdAt  DateTime    @default(now())
+
+  expenseId String?
+  expense   Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([expenseId])
+}
+
+model FiscalYearLock {
+  year       Int      @id
+  locked     Boolean  @default(false)
+  lockedById String?
+  lockedAt   DateTime?
+}
