@@ -98,7 +98,9 @@ export interface SpendItem {
   id: string;
   vendor: string;
   category: string;
-  amount: number;
+  amount: number; // converted to SGD
+  originalAmount?: number;
+  originalCurrency?: string;
   date: string;
 }
 
@@ -111,4 +113,11 @@ export interface ReportSummary {
   flaggedCount: number;
   totalAmount: number;
   expenseCount: number;
+  currency: "SGD";
+}
+
+export interface ExchangeRate {
+  currency: string;
+  rateToSgd: number;
+  updatedAt: string;
 }

@@ -2,15 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../store/AuthContext";
 import { api } from "../api/client";
-import type { Expense, ReportSummary, SpendItem } from "../api/types";
+import type {
+  Expense,
+  ExchangeRate,
+  ReportSummary,
+  SpendItem,
+} from "../api/types";
 import StatusBadge from "../components/StatusBadge";
 import SpendBreakdown from "../components/SpendBreakdown";
 import { formatMoney, formatDate } from "../utils/format";
+import { toSgd } from "../utils/currency";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [myExpenses, setMyExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [approvalQueueCount, setApprovalQueueCount] = useState<number | null>(
     null,
   );
@@ -23,6 +30,10 @@ export default function Dashboard() {
     api
       .get<Expense[]>(`/expenses?submittedById=${user.id}`)
       .then(setMyExpenses)
+      .catch(() => {});
+    api
+      .get<ExchangeRate[]>("/exchange-rates")
+      .then(setRates)
       .catch(() => {});
     if (isLead) {
       api
@@ -41,11 +52,12 @@ export default function Dashboard() {
     (e) => e.status === "PENDING_APPROVAL" || e.status === "INFO_REQUESTED",
   ).length;
   const drafts = myExpenses.filter((e) => e.status === "DRAFT").length;
-  const myCurrency = myExpenses[0]?.currency;
 
   // Employees don't get the /reports/summary endpoint (it's team/company
   // scoped) — derive the same item/category breakdown from their own
   // expenses client-side instead, so everyone sees a breakdown of *something*.
+  // Everything is converted to SGD first so expenses in different currencies
+  // don't just get added together as if they were the same unit.
   const personalBreakdown = useMemo(() => {
     const items: SpendItem[] = myExpenses
       .flatMap((e) =>
@@ -53,7 +65,9 @@ export default function Dashboard() {
           id: li.id,
           vendor: e.vendor,
           category: li.category.name,
-          amount: li.amount,
+          amount: toSgd(li.amount, e.currency, rates),
+          originalAmount: li.amount,
+          originalCurrency: e.currency,
           date: e.date,
         })),
       )
@@ -64,7 +78,10 @@ export default function Dashboard() {
     const byDepartment = new Map<string, number>();
     for (const e of myExpenses) {
       const dept = e.department || "Unassigned";
-      byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + e.amountTotal);
+      byDepartment.set(
+        dept,
+        (byDepartment.get(dept) ?? 0) + toSgd(e.amountTotal, e.currency, rates),
+      );
     }
     return {
       items,
@@ -75,7 +92,7 @@ export default function Dashboard() {
         .map(([name, total]) => ({ name, total }))
         .sort((a, b) => b.total - a.total),
     };
-  }, [myExpenses]);
+  }, [myExpenses, rates]);
 
   return (
     <div className="page">
@@ -119,7 +136,7 @@ export default function Dashboard() {
           items={personalBreakdown.items}
           byCategory={personalBreakdown.byCategory}
           byDepartment={personalBreakdown.byDepartment}
-          currency={myCurrency}
+          currency="SGD"
           onCategoryClick={setActiveCategory}
           activeCategory={activeCategory}
         />

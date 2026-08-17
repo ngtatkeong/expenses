@@ -214,6 +214,17 @@ export default function SpendBreakdown({
                       <span className="item-amount">
                         {formatMoney(item.amount, currency)}
                       </span>
+                      {item.originalCurrency &&
+                        item.originalCurrency !== currency && (
+                          <span className="muted small">
+                            (
+                            {formatMoney(
+                              item.originalAmount ?? item.amount,
+                              item.originalCurrency,
+                            )}
+                            )
+                          </span>
+                        )}
                     </div>
                     <div className="item-bar-track">
                       <div

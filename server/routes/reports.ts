@@ -2,7 +2,13 @@ import { Router } from "express";
 import PDFDocument from "pdfkit";
 import { prisma } from "../db.js";
 import { requireAuth, requireRole } from "../auth.js";
+import { toSgd } from "../lib/convert.js";
 import type { Prisma } from "@prisma/client";
+
+async function getRatesMap(): Promise<Record<string, number>> {
+  const rates = await prisma.exchangeRate.findMany();
+  return Object.fromEntries(rates.map((r) => [r.currency, r.rateToSgd]));
+}
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -40,13 +46,8 @@ reportsRouter.get(
       ];
     }
 
-    const [byStatus, expenses] = await Promise.all([
-      prisma.expense.groupBy({
-        by: ["status"],
-        where,
-        _sum: { amountTotal: true },
-        _count: { _all: true },
-      }),
+    const [rates, expenses] = await Promise.all([
+      getRatesMap(),
       prisma.expense.findMany({
         where,
         include: { lineItems: { include: { category: true } } },
@@ -54,33 +55,47 @@ reportsRouter.get(
       }),
     ]);
 
+    // Every total below is converted to SGD before summing, so expenses in
+    // different currencies don't get added together as if they were the
+    // same unit -- rates come from Settings > Exchange Rates.
     const byCategory = new Map<string, number>();
     const byDepartment = new Map<string, number>();
     const byMonth = new Map<string, number>();
+    const byStatus = new Map<string, { total: number; count: number }>();
 
     for (const e of expenses) {
       const dept = e.department || "Unassigned";
-      byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + e.amountTotal);
+      const sgdTotal = toSgd(e.amountTotal, e.currency, rates);
+      byDepartment.set(dept, (byDepartment.get(dept) ?? 0) + sgdTotal);
 
       const month = e.date.toISOString().slice(0, 7); // YYYY-MM
-      byMonth.set(month, (byMonth.get(month) ?? 0) + e.amountTotal);
+      byMonth.set(month, (byMonth.get(month) ?? 0) + sgdTotal);
+
+      const statusEntry = byStatus.get(e.status) ?? { total: 0, count: 0 };
+      statusEntry.total += sgdTotal;
+      statusEntry.count += 1;
+      byStatus.set(e.status, statusEntry);
 
       for (const li of e.lineItems) {
         const name = li.category.name;
-        byCategory.set(name, (byCategory.get(name) ?? 0) + li.amount);
+        const sgdAmount = toSgd(li.amount, e.currency, rates);
+        byCategory.set(name, (byCategory.get(name) ?? 0) + sgdAmount);
       }
     }
 
     // Flattened line items, ranked by magnitude — powers the "Expense Item
     // Comparison" list, which shows individual logged items rather than
-    // category aggregates.
+    // category aggregates. Amounts here are SGD-converted for cross-currency
+    // comparability; originalAmount/originalCurrency preserve the source figure.
     const items = expenses
       .flatMap((e) =>
         e.lineItems.map((li) => ({
           id: li.id,
           vendor: e.vendor,
           category: li.category.name,
-          amount: li.amount,
+          amount: toSgd(li.amount, e.currency, rates),
+          originalAmount: li.amount,
+          originalCurrency: e.currency,
           date: e.date.toISOString(),
         })),
       )
@@ -88,10 +103,10 @@ reportsRouter.get(
 
     res.json({
       items,
-      byStatus: byStatus.map((s) => ({
-        status: s.status,
-        total: s._sum.amountTotal ?? 0,
-        count: s._count._all,
+      byStatus: [...byStatus.entries()].map(([status, { total, count }]) => ({
+        status,
+        total,
+        count,
       })),
       byCategory: [...byCategory.entries()]
         .map(([name, total]) => ({ name, total }))
@@ -103,25 +118,36 @@ reportsRouter.get(
         .map(([month, total]) => ({ month, total }))
         .sort((a, b) => a.month.localeCompare(b.month)),
       flaggedCount: expenses.filter((e) => e.flagged).length,
-      totalAmount: expenses.reduce((s, e) => s + e.amountTotal, 0),
+      totalAmount: expenses.reduce(
+        (s, e) => s + toSgd(e.amountTotal, e.currency, rates),
+        0,
+      ),
       expenseCount: expenses.length,
+      currency: "SGD",
     });
   },
 );
 
 reportsRouter.get("/export.csv", requireRole("ADMIN"), async (req, res) => {
   const where = buildFilterWhere(req.query as Record<string, unknown>);
-  const expenses = await prisma.expense.findMany({
-    where,
-    include: { submittedBy: true, lineItems: { include: { category: true } } },
-    orderBy: { date: "asc" },
-  });
+  const [rates, expenses] = await Promise.all([
+    getRatesMap(),
+    prisma.expense.findMany({
+      where,
+      include: {
+        submittedBy: true,
+        lineItems: { include: { category: true } },
+      },
+      orderBy: { date: "asc" },
+    }),
+  ]);
 
   const header = [
     "Date",
     "Vendor",
     "Amount",
     "Currency",
+    "Amount (SGD)",
     "Status",
     "Department",
     "Submitted By",
@@ -137,6 +163,7 @@ reportsRouter.get("/export.csv", requireRole("ADMIN"), async (req, res) => {
       e.vendor,
       e.amountTotal,
       e.currency,
+      toSgd(e.amountTotal, e.currency, rates).toFixed(2),
       e.status,
       e.department ?? "",
       e.submittedBy.name,
@@ -160,11 +187,14 @@ reportsRouter.get("/export.csv", requireRole("ADMIN"), async (req, res) => {
 
 reportsRouter.get("/export.pdf", requireRole("ADMIN"), async (req, res) => {
   const where = buildFilterWhere(req.query as Record<string, unknown>);
-  const expenses = await prisma.expense.findMany({
-    where,
-    include: { submittedBy: true },
-    orderBy: { date: "asc" },
-  });
+  const [rates, expenses] = await Promise.all([
+    getRatesMap(),
+    prisma.expense.findMany({
+      where,
+      include: { submittedBy: true },
+      orderBy: { date: "asc" },
+    }),
+  ]);
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
@@ -179,11 +209,16 @@ reportsRouter.get("/export.pdf", requireRole("ADMIN"), async (req, res) => {
   doc.fontSize(10).fillColor("#555").text(new Date().toLocaleString());
   doc.moveDown();
 
-  const total = expenses.reduce((s, e) => s + e.amountTotal, 0);
+  const total = expenses.reduce(
+    (s, e) => s + toSgd(e.amountTotal, e.currency, rates),
+    0,
+  );
   doc
     .fillColor("#000")
     .fontSize(12)
-    .text(`Total: ${total.toFixed(2)} across ${expenses.length} expense(s)`);
+    .text(
+      `Total: SGD ${total.toFixed(2)} across ${expenses.length} expense(s) (converted from original currencies)`,
+    );
   doc.moveDown();
 
   doc.fontSize(9);

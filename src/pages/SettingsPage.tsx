@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
-import type { Settings } from "../api/types";
+import { api, ApiError } from "../api/client";
+import type { ExchangeRate, Settings } from "../api/types";
 
 const MONTHS = [
   "January",
@@ -20,9 +20,12 @@ const MONTHS = [
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saved, setSaved] = useState(false);
+  const [rates, setRates] = useState<ExchangeRate[]>([]);
+  const [rateError, setRateError] = useState("");
 
   useEffect(() => {
     api.get<Settings>("/settings").then(setSettings);
+    api.get<ExchangeRate[]>("/exchange-rates").then(setRates);
   }, []);
 
   async function save(patch: Partial<Settings>) {
@@ -30,6 +33,23 @@ export default function SettingsPage() {
     setSettings(updated);
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  }
+
+  async function saveRate(currency: string, rateToSgd: number) {
+    setRateError("");
+    try {
+      const updated = await api.put<ExchangeRate>(
+        `/exchange-rates/${currency}`,
+        { rateToSgd },
+      );
+      setRates((prev) =>
+        prev.map((r) => (r.currency === currency ? updated : r)),
+      );
+    } catch (err) {
+      setRateError(
+        err instanceof ApiError ? err.message : "Failed to save exchange rate",
+      );
+    }
   }
 
   if (!settings)
@@ -110,6 +130,48 @@ export default function SettingsPage() {
             />
           </label>
         </div>
+      </section>
+
+      <section className="panel">
+        <h2>Exchange Rates</h2>
+        <p className="muted small" style={{ marginBottom: 12 }}>
+          Non-SGD expenses are converted to SGD using these rates before being
+          summed on dashboards and exports — 1 unit of the currency equals this
+          many SGD. Update them to keep reporting accurate; SGD itself is always
+          1 and isn't shown here.
+        </p>
+        {rateError && <p className="error-text">{rateError}</p>}
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Currency</th>
+              <th>1 unit =</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rates.map((r) => (
+              <tr key={r.currency}>
+                <td>{r.currency}</td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    style={{ width: 120 }}
+                    defaultValue={r.rateToSgd}
+                    onBlur={(e) => {
+                      const value = Number(e.target.value);
+                      if (value > 0 && value !== r.rateToSgd) {
+                        saveRate(r.currency, value);
+                      }
+                    }}
+                  />{" "}
+                  SGD
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
     </div>
   );

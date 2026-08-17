@@ -85,6 +85,15 @@ model Settings {
   updatedAt               DateTime @updatedAt
 }
 
+// Admin-maintained rates for converting non-SGD expenses into SGD for
+// reporting (dashboards, exports). 1 unit of `currency` = `rateToSgd` SGD.
+// SGD itself is not stored here -- it's implicitly 1.
+model ExchangeRate {
+  currency  String   @id
+  rateToSgd Float
+  updatedAt DateTime @updatedAt
+}
+
 model ExpenseCategory {
   id                     String   @id @default(uuid())
   name                   String   @unique
