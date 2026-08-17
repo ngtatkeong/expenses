@@ -305,6 +305,83 @@ expensesRouter.patch("/:id", async (req, res) => {
   }
 });
 
+// Admins may recategorize a line item on any unlocked expense, regardless of
+// status (including PAID) — this only changes reporting classification, not
+// the amount, so it's a lower-risk correction than a full edit. Everyone else
+// stays restricted to editing via PATCH /:id, which only allows DRAFT/
+// INFO_REQUESTED expenses.
+expensesRouter.patch(
+  "/:id/line-items/:lineItemId/category",
+  async (req, res) => {
+    if (req.user!.role !== "ADMIN") {
+      return res
+        .status(403)
+        .json({
+          error: "Only an admin can recategorize a line item after submission",
+        });
+    }
+    const id = req.params.id as string;
+    const lineItemId = req.params.lineItemId as string;
+    const { categoryId } = req.body ?? {};
+    if (!categoryId) {
+      return res.status(400).json({ error: "categoryId is required" });
+    }
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "Expense not found" });
+    if (existing.locked) {
+      return res
+        .status(409)
+        .json({ error: "This expense's fiscal year is locked" });
+    }
+
+    const lineItem = await prisma.expenseLineItem.findUnique({
+      where: { id: lineItemId },
+      include: { category: true },
+    });
+    if (!lineItem || lineItem.expenseId !== id) {
+      return res.status(404).json({ error: "Line item not found" });
+    }
+
+    const category = await prisma.expenseCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!category) return res.status(400).json({ error: "Category not found" });
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.expenseLineItem.update({
+          where: { id: lineItemId },
+          data: { categoryId },
+        });
+        await writeAudit(tx, {
+          entityType: "Expense",
+          entityId: id,
+          action: "UPDATED",
+          actorId: req.user!.id,
+          before: { lineItemId, category: lineItem.category.name },
+          after: { lineItemId, category: category.name },
+          comment: "Recategorized line item (admin correction)",
+          expenseId: id,
+        });
+        await recomputeExpenseFlags(id, tx);
+        return tx.expense.findUniqueOrThrow({
+          where: { id },
+          include: expenseInclude,
+        });
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to recategorize line item",
+      });
+    }
+  },
+);
+
 expensesRouter.delete("/:id", async (req, res) => {
   const id = req.params.id as string;
   const existing = await prisma.expense.findUnique({ where: { id } });

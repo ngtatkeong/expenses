@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../store/AuthContext";
-import type { Expense } from "../api/types";
+import type { Expense, ExpenseCategory } from "../api/types";
 import StatusBadge from "../components/StatusBadge";
 import {
   formatMoney,
@@ -19,6 +19,7 @@ export default function ExpenseDetail() {
   const [error, setError] = useState("");
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
@@ -34,6 +35,27 @@ export default function ExpenseDetail() {
   }, [id]);
 
   useEffect(load, [load]);
+  useEffect(() => {
+    if (user?.role === "ADMIN") {
+      api.get<ExpenseCategory[]>("/categories").then(setCategories);
+    }
+  }, [user?.role]);
+
+  async function recategorize(lineItemId: string, categoryId: string) {
+    setError("");
+    try {
+      const updated = await api.patch<Expense>(
+        `/expenses/${id}/line-items/${lineItemId}/category`,
+        { categoryId },
+      );
+      setExpense(updated);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Failed to recategorize",
+      );
+      load(); // re-sync the dropdown back to the real server state
+    }
+  }
 
   if (error)
     return (
@@ -164,7 +186,22 @@ export default function ExpenseDetail() {
           <tbody>
             {expense.lineItems.map((li) => (
               <tr key={li.id}>
-                <td>{li.category.name}</td>
+                <td>
+                  {user?.role === "ADMIN" && !expense.locked ? (
+                    <select
+                      value={li.category.id}
+                      onChange={(e) => recategorize(li.id, e.target.value)}
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    li.category.name
+                  )}
+                </td>
                 <td>{formatMoney(li.amount, expense.currency)}</td>
                 <td className="muted">{li.note ?? "—"}</td>
               </tr>
