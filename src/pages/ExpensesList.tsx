@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Expense } from "../api/types";
+import type { Expense, ExchangeRate } from "../api/types";
 import StatusBadge from "../components/StatusBadge";
 import { formatMoney, formatDate } from "../utils/format";
+import { toSgd } from "../utils/currency";
 
 const STATUS_OPTIONS = [
   "DRAFT",
@@ -17,6 +18,7 @@ const STATUS_OPTIONS = [
 export default function ExpensesList() {
   const [params, setParams] = useSearchParams();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const status = params.get("status") ?? "";
@@ -29,6 +31,10 @@ export default function ExpensesList() {
       .then(setExpenses)
       .finally(() => setLoading(false));
   }, [status]);
+
+  useEffect(() => {
+    api.get<ExchangeRate[]>("/exchange-rates").then(setRates);
+  }, []);
 
   return (
     <div className="page">
@@ -81,7 +87,19 @@ export default function ExpensesList() {
                   <td>{formatDate(e.date)}</td>
                   <td>{e.vendor}</td>
                   <td>{e.submittedBy.name}</td>
-                  <td>{formatMoney(e.amountTotal, e.currency)}</td>
+                  <td>
+                    {formatMoney(e.amountTotal, e.currency)}
+                    {e.currency !== "SGD" && (
+                      <div className="muted small">
+                        ≈{" "}
+                        {formatMoney(
+                          toSgd(e.amountTotal, e.currency, rates),
+                          "SGD",
+                        )}{" "}
+                        paid to staff
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <StatusBadge status={e.status} />{" "}
                     {e.flagged && (

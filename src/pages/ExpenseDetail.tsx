@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../store/AuthContext";
-import type { Expense, ExpenseCategory } from "../api/types";
+import type { Expense, ExpenseCategory, ExchangeRate } from "../api/types";
+import { toSgd } from "../utils/currency";
 import StatusBadge from "../components/StatusBadge";
 import {
   formatMoney,
@@ -20,6 +21,7 @@ export default function ExpenseDetail() {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [rates, setRates] = useState<ExchangeRate[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
@@ -40,6 +42,9 @@ export default function ExpenseDetail() {
       api.get<ExpenseCategory[]>("/categories").then(setCategories);
     }
   }, [user?.role]);
+  useEffect(() => {
+    api.get<ExchangeRate[]>("/exchange-rates").then(setRates);
+  }, []);
 
   async function recategorize(lineItemId: string, categoryId: string) {
     setError("");
@@ -210,6 +215,17 @@ export default function ExpenseDetail() {
         </table>
         <p style={{ marginTop: 10, fontWeight: 700 }}>
           Total: {formatMoney(expense.amountTotal, expense.currency)}
+          {expense.currency !== "SGD" && (
+            <span className="muted" style={{ fontWeight: 400 }}>
+              {" "}
+              — ≈{" "}
+              {formatMoney(
+                toSgd(expense.amountTotal, expense.currency, rates),
+                "SGD",
+              )}{" "}
+              paid to staff
+            </span>
+          )}
         </p>
         {expense.description && (
           <p className="muted small">{expense.description}</p>
