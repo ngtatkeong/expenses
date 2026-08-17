@@ -109,6 +109,7 @@ export interface ReportSummary {
   byStatus: { status: ExpenseStatus; total: number; count: number }[];
   byCategory: { name: string; total: number }[];
   byDepartment: { name: string; total: number }[];
+  byVendor: { name: string; total: number; count: number }[];
   byMonth: { month: string; total: number }[];
   flaggedCount: number;
   totalAmount: number;

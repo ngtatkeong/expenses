@@ -62,6 +62,7 @@ reportsRouter.get(
     const byDepartment = new Map<string, number>();
     const byMonth = new Map<string, number>();
     const byStatus = new Map<string, { total: number; count: number }>();
+    const byVendor = new Map<string, { total: number; count: number }>();
 
     for (const e of expenses) {
       const dept = e.department || "Unassigned";
@@ -75,6 +76,11 @@ reportsRouter.get(
       statusEntry.total += sgdTotal;
       statusEntry.count += 1;
       byStatus.set(e.status, statusEntry);
+
+      const vendorEntry = byVendor.get(e.vendor) ?? { total: 0, count: 0 };
+      vendorEntry.total += sgdTotal;
+      vendorEntry.count += 1;
+      byVendor.set(e.vendor, vendorEntry);
 
       for (const li of e.lineItems) {
         const name = li.category.name;
@@ -113,6 +119,9 @@ reportsRouter.get(
         .sort((a, b) => b.total - a.total),
       byDepartment: [...byDepartment.entries()]
         .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total),
+      byVendor: [...byVendor.entries()]
+        .map(([name, { total, count }]) => ({ name, total, count }))
         .sort((a, b) => b.total - a.total),
       byMonth: [...byMonth.entries()]
         .map(([month, total]) => ({ month, total }))

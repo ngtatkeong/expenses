@@ -118,6 +118,28 @@ export default function Reports() {
             </table>
           </section>
 
+          <section className="panel">
+            <h2>By vendor</h2>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  <th>Expenses</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.byVendor.map((v) => (
+                  <tr key={v.name}>
+                    <td>{v.name}</td>
+                    <td>{v.count}</td>
+                    <td>{formatMoney(v.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+
           <section className="grid-3">
             <div className="panel">
               <h2>By category</h2>
