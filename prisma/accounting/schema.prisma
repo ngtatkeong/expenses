@@ -1,0 +1,204 @@
+// Simple double-entry accounting module for a small company -- separate
+// Postgres database from the main SQLite expense-tracking schema (kept
+// deliberately independent rather than migrating the whole app, since the
+// existing expense data/workflow is already working in production).
+//
+// Core invariant enforced at the application layer (not the DB): every
+// JournalEntry's lines must have sum(debit) == sum(credit).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../server/generated/accounting-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("ACCOUNTING_DATABASE_URL")
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+model Account {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  name        String
+  type        AccountType
+  description String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  journalLines        JournalLine[]
+  invoiceLines        InvoiceLine[]
+  billLines           BillLine[]
+  paymentsAsBankAccount Payment[]   @relation("PaymentBankAccount")
+
+  @@index([type])
+}
+
+enum JournalSource {
+  MANUAL
+  INVOICE
+  BILL
+  PAYMENT
+}
+
+model JournalEntry {
+  id          String        @id @default(uuid())
+  date        DateTime
+  memo        String?
+  reference   String?
+  source      JournalSource @default(MANUAL)
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  lines   JournalLine[]
+  invoice Invoice? @relation("InvoiceJournal")
+  bill    Bill?    @relation("BillJournal")
+  payment Payment? @relation("PaymentJournal")
+
+  @@index([date])
+}
+
+model JournalLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id])
+  debit          Decimal      @default(0) @db.Decimal(14, 2)
+  credit         Decimal      @default(0) @db.Decimal(14, 2)
+  description    String?
+
+  @@index([journalEntryId])
+  @@index([accountId])
+}
+
+model Customer {
+  id        String    @id @default(uuid())
+  name      String
+  email     String?
+  address   String?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  invoices  Invoice[]
+}
+
+model Vendor {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  bills     Bill[]
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  issueDate     DateTime
+  dueDate       DateTime
+  currency      String        @default("SGD")
+  status        InvoiceStatus @default(DRAFT)
+  notes         String?
+  createdById   String
+  createdAt     DateTime      @default(now())
+
+  lines    InvoiceLine[]
+  payments Payment[]
+
+  journalEntryId String?       @unique
+  journalEntry   JournalEntry? @relation("InvoiceJournal", fields: [journalEntryId], references: [id])
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(14, 2)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id])
+}
+
+enum BillStatus {
+  DRAFT
+  RECEIVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Bill {
+  id          String     @id @default(uuid())
+  billNumber  String     @unique
+  vendorId    String
+  vendor      Vendor     @relation(fields: [vendorId], references: [id])
+  issueDate   DateTime
+  dueDate     DateTime
+  currency    String     @default("SGD")
+  status      BillStatus @default(DRAFT)
+  notes       String?
+  createdById String
+  createdAt   DateTime   @default(now())
+
+  lines    BillLine[]
+  payments Payment[]
+
+  journalEntryId String?       @unique
+  journalEntry   JournalEntry? @relation("BillJournal", fields: [journalEntryId], references: [id])
+}
+
+model BillLine {
+  id          String  @id @default(uuid())
+  billId      String
+  bill        Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(14, 2)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id])
+}
+
+enum PaymentType {
+  RECEIVED
+  PAID
+}
+
+model Payment {
+  id            String      @id @default(uuid())
+  type          PaymentType
+  date          DateTime
+  amount        Decimal     @db.Decimal(14, 2)
+  method        String?
+  invoiceId     String?
+  invoice       Invoice?    @relation(fields: [invoiceId], references: [id])
+  billId        String?
+  bill          Bill?       @relation(fields: [billId], references: [id])
+  bankAccountId String
+  bankAccount   Account     @relation("PaymentBankAccount", fields: [bankAccountId], references: [id])
+  createdById   String
+  createdAt     DateTime    @default(now())
+
+  journalEntryId String?       @unique
+  journalEntry   JournalEntry? @relation("PaymentJournal", fields: [journalEntryId], references: [id])
+}

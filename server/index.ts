@@ -14,6 +14,7 @@ import { receiptsRouter } from "./routes/receipts.js";
 import { fiscalYearRouter } from "./routes/fiscalYear.js";
 import { reportsRouter } from "./routes/reports.js";
 import { exchangeRatesRouter } from "./routes/exchangeRates.js";
+import { accountingRouter } from "./routes/accounting.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "..", "dist");
@@ -59,6 +60,7 @@ app.use("/api/receipts", receiptsRouter);
 app.use("/api/fiscal-years", fiscalYearRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/exchange-rates", exchangeRatesRouter);
+app.use("/api/accounting", accountingRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

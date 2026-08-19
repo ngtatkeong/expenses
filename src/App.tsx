@@ -12,6 +12,12 @@ import SettingsPage from "./pages/SettingsPage";
 import FiscalYears from "./pages/FiscalYears";
 import Reports from "./pages/Reports";
 import Account from "./pages/Account";
+import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
+import JournalEntries from "./pages/accounting/JournalEntries";
+import Invoices from "./pages/accounting/Invoices";
+import Bills from "./pages/accounting/Bills";
+import Payments from "./pages/accounting/Payments";
+import AccountingReports from "./pages/accounting/AccountingReports";
 import "./App.css";
 
 function RequireAdmin({ children }: { children: ReactNode }) {
@@ -73,6 +79,25 @@ function Shell() {
               </NavLink>
               <NavLink to="/settings" className="nav-link">
                 Settings
+              </NavLink>
+              <div className="nav-section-label">Accounting</div>
+              <NavLink to="/accounting/accounts" className="nav-link">
+                Chart of Accounts
+              </NavLink>
+              <NavLink to="/accounting/journal-entries" className="nav-link">
+                Journal Entries
+              </NavLink>
+              <NavLink to="/accounting/invoices" className="nav-link">
+                Invoices
+              </NavLink>
+              <NavLink to="/accounting/bills" className="nav-link">
+                Bills
+              </NavLink>
+              <NavLink to="/accounting/payments" className="nav-link">
+                Payments
+              </NavLink>
+              <NavLink to="/accounting/reports" className="nav-link">
+                Accounting Reports
               </NavLink>
             </>
           )}
@@ -138,6 +163,54 @@ function Shell() {
             }
           />
           <Route path="/account" element={<Account />} />
+          <Route
+            path="/accounting/accounts"
+            element={
+              <RequireAdmin>
+                <ChartOfAccounts />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/journal-entries"
+            element={
+              <RequireAdmin>
+                <JournalEntries />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/invoices"
+            element={
+              <RequireAdmin>
+                <Invoices />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/bills"
+            element={
+              <RequireAdmin>
+                <Bills />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/payments"
+            element={
+              <RequireAdmin>
+                <Payments />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/reports"
+            element={
+              <RequireAdmin>
+                <AccountingReports />
+              </RequireAdmin>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

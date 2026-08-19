@@ -10,6 +10,8 @@ fi
 npm ci
 npm run build
 npx prisma migrate deploy
+npx prisma generate --schema=prisma/accounting/schema.prisma
+npx prisma migrate deploy --schema=prisma/accounting/schema.prisma
 systemctl restart expense
 sleep 1
 curl -sf http://127.0.0.1:4200/api/health && echo "Expense Manager: healthy"
