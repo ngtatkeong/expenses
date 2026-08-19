@@ -35,10 +35,10 @@ const TASKS = [
     desc: "The list of things you can record money against — bank accounts, income types, expense types.",
   },
   {
-    to: "/accounting/reports",
+    to: "/accounting/wizards/reports",
     icon: "📊",
     title: "See how the business is doing",
-    desc: "Profit & loss, and what the business owns vs owes (balance sheet).",
+    desc: "Are you making money, and what do you own vs owe — explained in plain English.",
   },
 ];
 
@@ -78,14 +78,10 @@ export default function AccountingHome() {
         ))}
       </div>
 
-      <p className="muted small" style={{ marginTop: 18 }}>
-        Want to look at what's already been recorded?{" "}
-        <Link to="/accounting/accounts">Categories</Link> ·{" "}
-        <Link to="/accounting/journal-entries">All transactions</Link> ·{" "}
-        <Link to="/accounting/invoices">Invoices</Link> ·{" "}
-        <Link to="/accounting/bills">Bills</Link> ·{" "}
-        <Link to="/accounting/payments">Payments</Link>. New entries are always
-        made through the wizards above, to keep the books correct.
+      <p className="muted small" style={{ marginTop: 24 }}>
+        Stick to the steps above — that's all you need. If your accountant needs
+        to look at the technical records directly,{" "}
+        <Link to="/accounting/accounts">they can find those here</Link>.
       </p>
     </div>
   );
