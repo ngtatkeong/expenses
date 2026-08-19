@@ -12,12 +12,18 @@ import SettingsPage from "./pages/SettingsPage";
 import FiscalYears from "./pages/FiscalYears";
 import Reports from "./pages/Reports";
 import Account from "./pages/Account";
+import AccountingHome from "./pages/accounting/AccountingHome";
 import ChartOfAccounts from "./pages/accounting/ChartOfAccounts";
 import JournalEntries from "./pages/accounting/JournalEntries";
 import Invoices from "./pages/accounting/Invoices";
 import Bills from "./pages/accounting/Bills";
 import Payments from "./pages/accounting/Payments";
 import AccountingReports from "./pages/accounting/AccountingReports";
+import SetupWizard from "./pages/accounting/wizards/SetupWizard";
+import SaleWizard from "./pages/accounting/wizards/SaleWizard";
+import ExpenseWizard from "./pages/accounting/wizards/ExpenseWizard";
+import PaymentWizard from "./pages/accounting/wizards/PaymentWizard";
+import OtherWizard from "./pages/accounting/wizards/OtherWizard";
 import "./App.css";
 
 function RequireAdmin({ children }: { children: ReactNode }) {
@@ -81,23 +87,8 @@ function Shell() {
                 Settings
               </NavLink>
               <div className="nav-section-label">Accounting</div>
-              <NavLink to="/accounting/accounts" className="nav-link">
-                Chart of Accounts
-              </NavLink>
-              <NavLink to="/accounting/journal-entries" className="nav-link">
-                Journal Entries
-              </NavLink>
-              <NavLink to="/accounting/invoices" className="nav-link">
-                Invoices
-              </NavLink>
-              <NavLink to="/accounting/bills" className="nav-link">
-                Bills
-              </NavLink>
-              <NavLink to="/accounting/payments" className="nav-link">
-                Payments
-              </NavLink>
-              <NavLink to="/accounting/reports" className="nav-link">
-                Accounting Reports
+              <NavLink to="/accounting" end className="nav-link">
+                Accounting
               </NavLink>
             </>
           )}
@@ -163,6 +154,54 @@ function Shell() {
             }
           />
           <Route path="/account" element={<Account />} />
+          <Route
+            path="/accounting"
+            element={
+              <RequireAdmin>
+                <AccountingHome />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/setup"
+            element={
+              <RequireAdmin>
+                <SetupWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/sale"
+            element={
+              <RequireAdmin>
+                <SaleWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/expense"
+            element={
+              <RequireAdmin>
+                <ExpenseWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/payment"
+            element={
+              <RequireAdmin>
+                <PaymentWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/other"
+            element={
+              <RequireAdmin>
+                <OtherWizard />
+              </RequireAdmin>
+            }
+          />
           <Route
             path="/accounting/accounts"
             element={

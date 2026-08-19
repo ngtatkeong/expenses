@@ -1,0 +1,92 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../../api/client";
+import type { Account } from "../../api/accountingTypes";
+
+const TASKS = [
+  {
+    to: "/accounting/wizards/sale",
+    icon: "💰",
+    title: "Record a sale",
+    desc: "A customer bought something from you, or owes you money. Creates an invoice.",
+  },
+  {
+    to: "/accounting/wizards/expense",
+    icon: "🧾",
+    title: "Record a purchase or expense",
+    desc: "You bought something, or owe a supplier money. Creates a bill.",
+  },
+  {
+    to: "/accounting/wizards/payment",
+    icon: "🏦",
+    title: "Record money in or out of the bank",
+    desc: "A customer paid you, or you paid a supplier. Matches it to the sale/purchase.",
+  },
+  {
+    to: "/accounting/wizards/other",
+    icon: "🔀",
+    title: "Record something else",
+    desc: "Any other money movement — e.g. moving cash between accounts, an owner contribution.",
+  },
+  {
+    to: "/accounting/wizards/setup",
+    icon: "⚙️",
+    title: "Set up categories",
+    desc: "The list of things you can record money against — bank accounts, income types, expense types.",
+  },
+  {
+    to: "/accounting/reports",
+    icon: "📊",
+    title: "See how the business is doing",
+    desc: "Profit & loss, and what the business owns vs owes (balance sheet).",
+  },
+];
+
+export default function AccountingHome() {
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
+
+  useEffect(() => {
+    api.get<Account[]>("/accounting/accounts").then(setAccounts);
+  }, []);
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <h1>Accounting</h1>
+        <p className="muted">
+          A simple bookkeeping system for a small company. No accounting
+          background needed — pick what you're trying to do below and it'll walk
+          you through it.
+        </p>
+      </header>
+
+      {accounts && accounts.length === 0 && (
+        <div className="callout callout-info">
+          You haven't set up your categories yet — start with{" "}
+          <Link to="/accounting/wizards/setup">Set up categories</Link> before
+          recording your first sale or purchase.
+        </div>
+      )}
+
+      <div className="grid-3">
+        {TASKS.map((t) => (
+          <Link key={t.to} to={t.to} className="task-card">
+            <span className="task-card-icon">{t.icon}</span>
+            <span className="task-card-title">{t.title}</span>
+            <span className="muted small">{t.desc}</span>
+          </Link>
+        ))}
+      </div>
+
+      <p className="muted small" style={{ marginTop: 18 }}>
+        Prefer to work directly with the underlying records instead of the
+        guided steps?{" "}
+        <Link to="/accounting/accounts">View chart of accounts</Link> ·{" "}
+        <Link to="/accounting/journal-entries">View journal entries</Link> ·{" "}
+        <Link to="/accounting/invoices">View invoices</Link> ·{" "}
+        <Link to="/accounting/bills">View bills</Link> ·{" "}
+        <Link to="/accounting/payments">View payments</Link>
+      </p>
+    </div>
+  );
+}

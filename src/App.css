@@ -647,3 +647,93 @@ textarea {
   background: var(--accent);
   border-radius: 999px;
 }
+
+/* Accounting wizards */
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.task-card:hover {
+  border-color: var(--accent);
+}
+.task-card-icon {
+  font-size: 26px;
+}
+.task-card-title {
+  font-weight: 700;
+  color: var(--text-h);
+  font-size: 15px;
+}
+
+.wizard-steps {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.wizard-step-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef0f4;
+  color: #6b7280;
+}
+.wizard-step-pill.active {
+  background: var(--accent);
+  color: white;
+}
+.wizard-step-pill.done {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.big-choice-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.big-choice {
+  flex: 1;
+  min-width: 180px;
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.big-choice.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.big-choice-title {
+  font-weight: 700;
+  color: var(--text-h);
+  margin-bottom: 4px;
+}
+
+.back-link {
+  display: inline-block;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
