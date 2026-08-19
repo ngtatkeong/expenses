@@ -40,6 +40,12 @@ const TASKS = [
     title: "See how the business is doing",
     desc: "Are you making money, and what do you own vs owe — explained in plain English.",
   },
+  {
+    to: "/accounting/wizards/iras",
+    icon: "🏛️",
+    title: "Prepare your IRAS tax filing summary",
+    desc: "The revenue and profit figures you'll need for Form C-S / ECI, ready to download.",
+  },
 ];
 
 export default function AccountingHome() {

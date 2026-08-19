@@ -1,4 +1,5 @@
 import { Router } from "express";
+import PDFDocument from "pdfkit";
 import { requireAuth, requireRole } from "../auth.js";
 import { accountingDb } from "../accountingDb.js";
 import {
@@ -590,4 +591,131 @@ accountingRouter.get("/reports/profit-and-loss", async (req, res) => {
 accountingRouter.get("/reports/balance-sheet", async (req, res) => {
   const { to } = parseDateRange(req.query as Record<string, unknown>);
   res.json(await computeBalanceSheet(to));
+});
+
+// ---- IRAS filing summary ----
+// Not a tax computation (no add-backs/capital allowances) -- just surfaces
+// the two figures every small company needs to start a Form C-S / Form C-S
+// (Lite) / ECI filing: Revenue and Net Profit/(Loss) before tax, for a
+// chosen financial year. Company name/UEN/GST status are supplied by the
+// caller each time rather than stored, since this app has no company
+// profile entity.
+function suggestedForm(revenue: number) {
+  if (revenue <= 200_000) return "Form C-S (Lite)";
+  if (revenue <= 5_000_000) return "Form C-S";
+  return "Form C (full tax computation required -- use a tax agent)";
+}
+
+accountingRouter.get("/reports/iras-summary", async (req, res) => {
+  const { from, to } = parseDateRange(req.query as Record<string, unknown>);
+  if (!from || !to) {
+    return res.status(400).json({ error: "from and to are required" });
+  }
+  const pnl = await computeProfitAndLoss({ from, to });
+  res.json({
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+    revenue: pnl.totalIncome,
+    totalExpenses: pnl.totalExpense,
+    netProfit: pnl.netProfit,
+    suggestedForm: suggestedForm(pnl.totalIncome),
+  });
+});
+
+accountingRouter.get("/reports/iras-summary.pdf", async (req, res) => {
+  const { from, to } = parseDateRange(req.query as Record<string, unknown>);
+  if (!from || !to) {
+    return res.status(400).json({ error: "from and to are required" });
+  }
+  const companyName =
+    String(req.query.companyName || "").slice(0, 200) ||
+    "(company name not entered)";
+  const uen = String(req.query.uen || "").slice(0, 50);
+  const gstRegistered = req.query.gstRegistered === "true";
+  const pnl = await computeProfitAndLoss({ from, to });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="iras-tax-summary.pdf"`,
+  );
+
+  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Tax Filing Summary", { align: "left" });
+  doc
+    .fontSize(10)
+    .fillColor("#555")
+    .text(`Generated ${new Date().toLocaleString()}`);
+  doc.moveDown();
+
+  doc.fillColor("#000").fontSize(12);
+  doc.text(`Company: ${companyName}`);
+  if (uen) doc.text(`UEN: ${uen}`);
+  doc.text(
+    `Financial year: ${from.toISOString().slice(0, 10)} to ${to.toISOString().slice(0, 10)}`,
+  );
+  doc.moveDown();
+
+  doc.font("Helvetica-Bold").text("Figures for IRAS filing (myTax Portal)");
+  doc.font("Helvetica");
+  doc.moveDown(0.3);
+  doc.text(`Revenue: SGD ${pnl.totalIncome.toFixed(2)}`);
+  doc.text(`Total expenses: SGD ${pnl.totalExpense.toFixed(2)}`);
+  doc.text(`Net profit / (loss) before tax: SGD ${pnl.netProfit.toFixed(2)}`);
+  doc.moveDown();
+
+  doc
+    .font("Helvetica-Bold")
+    .text(`Likely filing: ${suggestedForm(pnl.totalIncome)}`);
+  doc.font("Helvetica").fontSize(10).fillColor("#555");
+  doc.text(
+    "This is a suggestion based on revenue only -- IRAS has other qualifying conditions (e.g. no more than 5 shareholders for Form C-S Lite/C-S). Confirm eligibility on the myTax Portal.",
+    { width: 480 },
+  );
+  doc.moveDown();
+
+  doc.fillColor("#000").fontSize(12);
+  if (pnl.income.length > 0) {
+    doc.font("Helvetica-Bold").text("Income breakdown");
+    doc.font("Helvetica");
+    for (const r of pnl.income.filter((r) => r.amount !== 0)) {
+      doc.text(`  ${r.name}: SGD ${r.amount.toFixed(2)}`);
+    }
+    doc.moveDown(0.5);
+  }
+  if (pnl.expense.length > 0) {
+    doc.font("Helvetica-Bold").text("Expense breakdown");
+    doc.font("Helvetica");
+    for (const r of pnl.expense.filter((r) => r.amount !== 0)) {
+      doc.text(`  ${r.name}: SGD ${r.amount.toFixed(2)}`);
+    }
+    doc.moveDown(0.5);
+  }
+
+  doc.moveDown();
+  doc.font("Helvetica-Bold").text("GST");
+  doc.font("Helvetica").fontSize(10);
+  if (gstRegistered) {
+    doc.text(
+      "This company is marked as GST-registered, but this system does not separate GST from transaction amounts, so no GST F5 figures are included here. Prepare your GST return separately, or ask your accountant.",
+      { width: 480 },
+    );
+  } else {
+    doc.text(
+      "This company is marked as not GST-registered -- no GST return needed.",
+    );
+  }
+
+  doc.moveDown();
+  doc
+    .fontSize(9)
+    .fillColor("#888")
+    .text(
+      "This summary is drawn directly from your bookkeeping records in this system. It is not a substitute for professional tax advice -- it does not include tax adjustments (disallowable expenses, capital allowances, etc.). Review with a qualified tax agent before filing.",
+      { width: 480 },
+    );
+
+  doc.end();
 });

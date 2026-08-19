@@ -25,6 +25,7 @@ import ExpenseWizard from "./pages/accounting/wizards/ExpenseWizard";
 import PaymentWizard from "./pages/accounting/wizards/PaymentWizard";
 import OtherWizard from "./pages/accounting/wizards/OtherWizard";
 import ReportsWizard from "./pages/accounting/wizards/ReportsWizard";
+import IrasWizard from "./pages/accounting/wizards/IrasWizard";
 import "./App.css";
 
 function RequireAdmin({ children }: { children: ReactNode }) {
@@ -208,6 +209,14 @@ function Shell() {
             element={
               <RequireAdmin>
                 <ReportsWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/iras"
+            element={
+              <RequireAdmin>
+                <IrasWizard />
               </RequireAdmin>
             }
           />
