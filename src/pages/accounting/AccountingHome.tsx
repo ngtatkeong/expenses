@@ -79,13 +79,13 @@ export default function AccountingHome() {
       </div>
 
       <p className="muted small" style={{ marginTop: 18 }}>
-        Prefer to work directly with the underlying records instead of the
-        guided steps?{" "}
-        <Link to="/accounting/accounts">View chart of accounts</Link> ·{" "}
-        <Link to="/accounting/journal-entries">View journal entries</Link> ·{" "}
-        <Link to="/accounting/invoices">View invoices</Link> ·{" "}
-        <Link to="/accounting/bills">View bills</Link> ·{" "}
-        <Link to="/accounting/payments">View payments</Link>
+        Want to look at what's already been recorded?{" "}
+        <Link to="/accounting/accounts">Categories</Link> ·{" "}
+        <Link to="/accounting/journal-entries">All transactions</Link> ·{" "}
+        <Link to="/accounting/invoices">Invoices</Link> ·{" "}
+        <Link to="/accounting/bills">Bills</Link> ·{" "}
+        <Link to="/accounting/payments">Payments</Link>. New entries are always
+        made through the wizards above, to keep the books correct.
       </p>
     </div>
   );

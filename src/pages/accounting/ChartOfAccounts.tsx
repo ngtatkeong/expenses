@@ -1,51 +1,16 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../../api/client";
-import type { Account, AccountType } from "../../api/accountingTypes";
+import { Link } from "react-router-dom";
+import { api } from "../../api/client";
+import type { Account } from "../../api/accountingTypes";
 import AccountingNav from "./AccountingNav";
-
-const TYPES: AccountType[] = [
-  "ASSET",
-  "LIABILITY",
-  "EQUITY",
-  "INCOME",
-  "EXPENSE",
-];
 
 export default function ChartOfAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [type, setType] = useState<AccountType>("EXPENSE");
-  const [error, setError] = useState("");
 
   function load() {
     api.get<Account[]>("/accounting/accounts").then(setAccounts);
   }
   useEffect(load, []);
-
-  async function seed() {
-    await api.post("/accounting/setup/seed");
-    load();
-  }
-
-  async function create() {
-    if (!code.trim() || !name.trim()) return;
-    setError("");
-    try {
-      await api.post("/accounting/accounts", {
-        code: code.trim(),
-        name: name.trim(),
-        type,
-      });
-      setCode("");
-      setName("");
-      load();
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Failed to create account",
-      );
-    }
-  }
 
   async function toggleActive(a: Account) {
     await api.patch(`/accounting/accounts/${a.id}`, { active: !a.active });
@@ -56,56 +21,28 @@ export default function ChartOfAccounts() {
     <div className="page">
       <header className="page-header">
         <h1>Chart of Accounts</h1>
-        <p className="muted">
-          The list of accounts every journal entry, invoice, and bill posts
-          against.
-        </p>
+        <Link to="/accounting/wizards/setup" className="btn">
+          + Set up / add categories
+        </Link>
       </header>
 
       <AccountingNav />
 
-      {accounts.length === 0 && (
+      {accounts.length === 0 ? (
         <section className="panel">
-          <p className="muted small">No accounts yet.</p>
-          <button className="btn" onClick={seed}>
-            Set up default chart of accounts
-          </button>
+          <p className="muted small">
+            No categories set up yet — head to{" "}
+            <Link to="/accounting/wizards/setup">Set up categories</Link> to get
+            started.
+          </p>
         </section>
+      ) : (
+        <p className="muted small">
+          These are the categories every wizard uses behind the scenes. Add more
+          from the <Link to="/accounting/wizards/setup">Set up categories</Link>{" "}
+          wizard.
+        </p>
       )}
-
-      <section className="panel">
-        <h2>Add account</h2>
-        <div className="filters-row">
-          <input
-            type="text"
-            placeholder="Code (e.g. 6500)"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            style={{ width: 140 }}
-          />
-          <input
-            type="text"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ flex: 1, minWidth: 200 }}
-          />
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as AccountType)}
-          >
-            {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button className="btn" onClick={create}>
-            Add
-          </button>
-        </div>
-        {error && <p className="error-text">{error}</p>}
-      </section>
 
       <section className="panel">
         <table className="data-table">
