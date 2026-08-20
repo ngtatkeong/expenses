@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../../api/client";
 import type { Account, Customer } from "../../../api/accountingTypes";
 import { formatMoney } from "../../../utils/format";
+import { useAiEnabled } from "../../../hooks/useAiEnabled";
 import WizardShell from "./WizardShell";
+
+interface ParsedTransaction {
+  partyName: string;
+  existingPartyId?: string;
+  description: string;
+  amount: number;
+  accountId?: string;
+}
 
 const STEPS = [
   "Who bought from you?",
@@ -27,6 +36,7 @@ interface DraftLine {
 
 export default function SaleWizard() {
   const navigate = useNavigate();
+  const aiEnabled = useAiEnabled();
   const [step, setStep] = useState(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -36,6 +46,13 @@ export default function SaleWizard() {
   const [lines, setLines] = useState<DraftLine[]>([
     { description: "", amount: "", accountId: "" },
   ]);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiFilled, setAiFilled] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const receiptInput = useRef<HTMLInputElement>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [issueDate, setIssueDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -70,6 +87,86 @@ export default function SaleWizard() {
   }
   function removeLine(i: number) {
     setLines((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function applyParsed(parsed: ParsedTransaction) {
+    if (parsed.existingPartyId) {
+      setCustomerId(parsed.existingPartyId);
+      setNewCustomerName("");
+    } else {
+      setCustomerId("");
+      setNewCustomerName(parsed.partyName);
+    }
+    setLines([
+      {
+        description: parsed.description,
+        amount: String(parsed.amount),
+        accountId: parsed.accountId || "",
+      },
+    ]);
+    setAiFilled(true);
+  }
+
+  async function fillFromText() {
+    if (!aiText.trim()) return;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const parsed = await api.post<ParsedTransaction>(
+        "/ai/parse-transaction-text",
+        {
+          text: aiText,
+          kind: "sale",
+        },
+      );
+      applyParsed(parsed);
+    } catch (err) {
+      setAiError(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't read that — try filling it in manually",
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function fillFromReceipt(file: File) {
+    setOcrBusy(true);
+    setOcrProgress(0);
+    setAiError("");
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng", 1, {
+        logger: (m) => {
+          if (m.status === "recognizing text")
+            setOcrProgress(Math.round(m.progress * 100));
+        },
+      });
+      const {
+        data: { text },
+      } = await worker.recognize(file);
+      await worker.terminate();
+      if (!text.trim())
+        throw new Error("Couldn't read any text from that image");
+      const parsed = await api.post<ParsedTransaction>(
+        "/ai/parse-transaction-text",
+        {
+          text,
+          kind: "sale",
+        },
+      );
+      applyParsed(parsed);
+    } catch (err) {
+      setAiError(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : "Couldn't read that photo — try filling it in manually",
+      );
+    } finally {
+      setOcrBusy(false);
+      if (receiptInput.current) receiptInput.current.value = "";
+    }
   }
 
   async function addCategory() {
@@ -178,6 +275,45 @@ export default function SaleWizard() {
         onNext={() => setStep(1)}
         nextDisabled={!customerId && !newCustomerName.trim()}
       >
+        {aiEnabled && (
+          <div className="filters-row" style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder='✨ Or just describe it: "received $2,000 from Acme for consulting"'
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-sm"
+              onClick={fillFromText}
+              disabled={aiBusy || !aiText.trim()}
+            >
+              {aiBusy ? "Reading…" : "Fill this in"}
+            </button>
+            <label className="btn btn-sm btn-ghost">
+              {ocrBusy
+                ? `Reading photo… ${ocrProgress}%`
+                : "📷 Fill from a photo"}
+              <input
+                ref={receiptInput}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                disabled={ocrBusy}
+                onChange={(e) =>
+                  e.target.files?.[0] && fillFromReceipt(e.target.files[0])
+                }
+              />
+            </label>
+          </div>
+        )}
+        {aiError && <p className="error-text small">{aiError}</p>}
+        {aiFilled && (
+          <p className="muted small" style={{ marginBottom: 8 }}>
+            Customer and item filled in below — check them, then continue.
+          </p>
+        )}
         <div className="filters-row">
           <label className="field" style={{ flex: 1 }}>
             Customer

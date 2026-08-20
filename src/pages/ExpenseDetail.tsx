@@ -11,6 +11,12 @@ import {
   formatDateTime,
   ACTION_LABELS,
 } from "../utils/format";
+import { useAiEnabled } from "../hooks/useAiEnabled";
+
+interface ApprovalNote {
+  note: string;
+  riskLevel: "low" | "medium" | "high";
+}
 
 export default function ExpenseDetail() {
   const { id } = useParams();
@@ -23,6 +29,9 @@ export default function ExpenseDetail() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
+  const aiEnabled = useAiEnabled();
+  const [approvalNote, setApprovalNote] = useState<ApprovalNote | null>(null);
+  const [approvalNoteLoading, setApprovalNoteLoading] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -45,6 +54,22 @@ export default function ExpenseDetail() {
   useEffect(() => {
     api.get<ExchangeRate[]>("/exchange-rates").then(setRates);
   }, []);
+
+  useEffect(() => {
+    if (!expense || !id || !aiEnabled) return;
+    const isApproverNow =
+      user?.role === "ADMIN" ||
+      (user?.role === "MANAGER" &&
+        (expense.currentApproverId === user.id ||
+          expense.currentApproverId === null));
+    if (!isApproverNow || expense.status !== "PENDING_APPROVAL") return;
+    setApprovalNoteLoading(true);
+    api
+      .post<ApprovalNote>("/ai/approval-note", { expenseId: id })
+      .then(setApprovalNote)
+      .catch(() => setApprovalNote(null))
+      .finally(() => setApprovalNoteLoading(false));
+  }, [expense, id, user, aiEnabled]);
 
   async function recategorize(lineItemId: string, categoryId: string) {
     setError("");
@@ -280,6 +305,22 @@ export default function ExpenseDetail() {
           </div>
         )}
       </section>
+
+      {canAct && aiEnabled && (
+        <section className="panel">
+          {approvalNoteLoading ? (
+            <p className="muted small">
+              ✨ Checking against their recent expenses…
+            </p>
+          ) : approvalNote ? (
+            <div
+              className={`callout ${approvalNote.riskLevel === "low" ? "callout-info" : "callout-warn"}`}
+            >
+              ✨ {approvalNote.note}
+            </div>
+          ) : null}
+        </section>
+      )}
 
       {(canAct || canPay) && (
         <section className="panel">

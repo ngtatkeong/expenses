@@ -27,6 +27,8 @@ import OtherWizard from "./pages/accounting/wizards/OtherWizard";
 import ReportsWizard from "./pages/accounting/wizards/ReportsWizard";
 import IrasWizard from "./pages/accounting/wizards/IrasWizard";
 import InsightsWizard from "./pages/accounting/wizards/InsightsWizard";
+import CashFlowWizard from "./pages/accounting/wizards/CashFlowWizard";
+import ReconcileWizard from "./pages/accounting/wizards/ReconcileWizard";
 import ExpenseInsights from "./pages/ExpenseInsights";
 import "./App.css";
 
@@ -238,6 +240,22 @@ function Shell() {
             element={
               <RequireAdmin>
                 <InsightsWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/cash-flow"
+            element={
+              <RequireAdmin>
+                <CashFlowWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/reconcile"
+            element={
+              <RequireAdmin>
+                <ReconcileWizard />
               </RequireAdmin>
             }
           />

@@ -52,6 +52,18 @@ const TASKS = [
     title: "AI Insights",
     desc: "Money owed to you, money you owe, and anything worth watching — in plain English.",
   },
+  {
+    to: "/accounting/wizards/cash-flow",
+    icon: "📈",
+    title: "Cash Flow Forecast",
+    desc: "Where your cash is headed over the next 30/60/90 days based on what's due.",
+  },
+  {
+    to: "/accounting/wizards/reconcile",
+    icon: "🏦",
+    title: "Reconcile a bank statement",
+    desc: "Paste your bank statement — AI matches each line to an outstanding invoice or bill.",
+  },
 ];
 
 export default function AccountingHome() {
