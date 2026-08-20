@@ -3,14 +3,27 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../../api/client";
 import type { Account, Bill, Invoice } from "../../../api/accountingTypes";
 import { formatDate, formatMoney } from "../../../utils/format";
+import { useAiEnabled } from "../../../hooks/useAiEnabled";
 import WizardShell from "./WizardShell";
 
 const STEPS = ["Money in or out?", "Which one?", "Details", "Review & confirm"];
 
+interface ParsedPayment {
+  type: "RECEIVED" | "PAID";
+  invoiceId?: string;
+  billId?: string;
+  amount: number;
+  method?: string;
+}
+
 export default function PaymentWizard() {
   const navigate = useNavigate();
+  const aiEnabled = useAiEnabled();
   const [step, setStep] = useState(0);
   const [type, setType] = useState<"RECEIVED" | "PAID" | null>(null);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
@@ -71,6 +84,37 @@ export default function PaymentWizard() {
     if (b) setAmount(String(b.total - b.paid));
   }
 
+  async function fillFromText() {
+    if (!aiText.trim()) return;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const parsed = await api.post<ParsedPayment>("/ai/parse-payment-text", {
+        text: aiText,
+      });
+      setType(parsed.type);
+      setAmount(String(parsed.amount));
+      if (parsed.method) setMethod(parsed.method);
+      if (parsed.invoiceId) {
+        setInvoiceId(parsed.invoiceId);
+        setStep(2);
+      } else if (parsed.billId) {
+        setBillId(parsed.billId);
+        setStep(2);
+      } else {
+        setStep(1);
+      }
+    } catch (err) {
+      setAiError(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't read that — try filling it in manually",
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function submit() {
     setError("");
     if (!amount || !bankAccountId) {
@@ -126,7 +170,26 @@ export default function PaymentWizard() {
         stepIndex={0}
         onNext={() => setStep(1)}
         nextDisabled={!type}
+        error={aiError}
       >
+        {aiEnabled && (
+          <div className="filters-row" style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder='✨ Or just describe it: "customer paid $2,000 for INV-000123 via PayNow"'
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-sm"
+              onClick={fillFromText}
+              disabled={aiBusy || !aiText.trim()}
+            >
+              {aiBusy ? "Reading…" : "Fill this in"}
+            </button>
+          </div>
+        )}
         <div className="big-choice-row">
           <button
             className={`big-choice ${type === "RECEIVED" ? "selected" : ""}`}

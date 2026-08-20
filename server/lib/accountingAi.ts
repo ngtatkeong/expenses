@@ -391,3 +391,201 @@ export async function reconcileStatement(statementText: string): Promise<{
 
   return { matches: validMatches, unmatchedLines: result.unmatchedLines };
 }
+
+// ---- "Record something else" natural-language entry ----
+
+const PARSE_OTHER_SYSTEM_PROMPT = `You extract structured fields from a plain-language description of a money movement that isn't a sale or purchase (e.g. "owner put in $5,000 cash as capital" or "moved $1,000 from the bank account to petty cash" or "bank charged a $20 fee").
+
+Rules:
+1. Every transaction moves money INTO one account and OUT OF another. Pick the single best-matching "into" account and "out of" account from the ACCOUNTS list by id -- never invent an id not in the list. If you can only confidently identify one side, leave the other null.
+2. Write a short one-line description of what happened.
+3. Find the amount.
+
+You must respond by calling the emit_parsed_other_transaction tool.`;
+
+const PARSE_OTHER_TOOL = {
+  name: "emit_parsed_other_transaction",
+  description: "Emit the extracted transaction fields.",
+  input_schema: {
+    type: "object",
+    properties: {
+      description: { type: "string" },
+      amount: { type: "number" },
+      toAccountId: { type: "string" },
+      fromAccountId: { type: "string" },
+    },
+    required: ["description", "amount"],
+  },
+};
+
+export interface ParsedOtherTransaction {
+  description: string;
+  amount: number;
+  toAccountId?: string;
+  fromAccountId?: string;
+}
+
+export async function parseOtherTransactionText(
+  text: string,
+): Promise<ParsedOtherTransaction> {
+  const accounts = await accountingDb.account.findMany({
+    where: { active: true },
+  });
+  const accountList = accounts
+    .map((a) => `- ${a.id}: ${a.name} (${a.type})`)
+    .join("\n");
+  const userText = `TEXT:\n${text}\n\nACCOUNTS:\n${accountList}`;
+
+  const result = await callStructured<ParsedOtherTransaction>({
+    system: PARSE_OTHER_SYSTEM_PROMPT,
+    userText,
+    tool: PARSE_OTHER_TOOL,
+    maxTokens: 512,
+  });
+
+  if (
+    result.toAccountId &&
+    !accounts.some((a) => a.id === result.toAccountId)
+  ) {
+    delete result.toAccountId;
+  }
+  if (
+    result.fromAccountId &&
+    !accounts.some((a) => a.id === result.fromAccountId)
+  ) {
+    delete result.fromAccountId;
+  }
+  return result;
+}
+
+// ---- Payment natural-language entry ----
+
+const PARSE_PAYMENT_SYSTEM_PROMPT = `You extract structured fields from a plain-language description of a payment being received or made (e.g. "customer paid $2,000 for INV-000123" or "paid SP Group $150 today via GIRO").
+
+Rules:
+1. Decide whether this is money RECEIVED (from a customer, against an invoice) or PAID (to a vendor, against a bill).
+2. Match it to the single best entry in the OUTSTANDING INVOICES or OUTSTANDING BILLS list by id -- by invoice/bill number if mentioned, otherwise by customer/vendor name and amount. Never invent an id not in the lists. If you can't confidently match one, leave both invoiceId and billId null.
+3. Find the amount and payment method if mentioned (e.g. bank transfer, cash, GIRO, PayNow, cheque).
+
+You must respond by calling the emit_parsed_payment tool.`;
+
+const PARSE_PAYMENT_TOOL = {
+  name: "emit_parsed_payment",
+  description: "Emit the extracted payment fields.",
+  input_schema: {
+    type: "object",
+    properties: {
+      type: { type: "string", enum: ["RECEIVED", "PAID"] },
+      invoiceId: { type: "string" },
+      billId: { type: "string" },
+      amount: { type: "number" },
+      method: { type: "string" },
+    },
+    required: ["type", "amount"],
+  },
+};
+
+export interface ParsedPayment {
+  type: "RECEIVED" | "PAID";
+  invoiceId?: string;
+  billId?: string;
+  amount: number;
+  method?: string;
+}
+
+export async function parsePaymentText(text: string): Promise<ParsedPayment> {
+  const [invoices, bills] = await Promise.all([
+    accountingDb.invoice.findMany({
+      where: { status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] } },
+      include: { customer: true, lines: true, payments: true },
+    }),
+    accountingDb.bill.findMany({
+      where: { status: { in: ["RECEIVED", "PARTIALLY_PAID", "OVERDUE"] } },
+      include: { vendor: true, lines: true, payments: true },
+    }),
+  ]);
+
+  const invoiceList = invoices.map((inv) => {
+    const total = inv.lines.reduce(
+      (s, l) => s + decToNum(l.quantity) * decToNum(l.unitPrice),
+      0,
+    );
+    const paid = inv.payments.reduce((s, p) => s + decToNum(p.amount), 0);
+    return `- id ${inv.id}: ${inv.invoiceNumber} (${inv.customer.name}), SGD ${(total - paid).toFixed(2)} outstanding`;
+  });
+  const billList = bills.map((b) => {
+    const total = b.lines.reduce(
+      (s, l) => s + decToNum(l.quantity) * decToNum(l.unitPrice),
+      0,
+    );
+    const paid = b.payments.reduce((s, p) => s + decToNum(p.amount), 0);
+    return `- id ${b.id}: ${b.billNumber} (${b.vendor.name}), SGD ${(total - paid).toFixed(2)} outstanding`;
+  });
+
+  const userText = `TEXT:\n${text}\n\nOUTSTANDING INVOICES:\n${invoiceList.join("\n") || "(none)"}\n\nOUTSTANDING BILLS:\n${billList.join("\n") || "(none)"}`;
+
+  const result = await callStructured<ParsedPayment>({
+    system: PARSE_PAYMENT_SYSTEM_PROMPT,
+    userText,
+    tool: PARSE_PAYMENT_TOOL,
+    maxTokens: 400,
+  });
+
+  if (result.invoiceId && !invoices.some((i) => i.id === result.invoiceId))
+    delete result.invoiceId;
+  if (result.billId && !bills.some((b) => b.id === result.billId))
+    delete result.billId;
+  return result;
+}
+
+// ---- AI-suggested starter categories ----
+
+const SUGGEST_CATEGORIES_SYSTEM_PROMPT = `A small business owner has described what their business does. Suggest a short list (5-10) of additional bookkeeping categories that would be useful for THIS specific business, beyond generic defaults like "Bank Account" or "Rent Expense" which they likely already have. Focus on categories specific to their industry/activity.
+
+Rules:
+1. Only suggest INCOME or EXPENSE type categories -- not asset/liability/equity accounts.
+2. Keep names short and business-like (e.g. "Freelancer Fees", "Shipping & Delivery", "Software Licenses").
+3. Don't suggest anything generic that every business already has (bank accounts, share capital, GST payable).
+
+You must respond by calling the emit_category_suggestions tool.`;
+
+const SUGGEST_CATEGORIES_TOOL = {
+  name: "emit_category_suggestions",
+  description: "Emit suggested bookkeeping categories.",
+  input_schema: {
+    type: "object",
+    properties: {
+      suggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string", enum: ["INCOME", "EXPENSE"] },
+          },
+          required: ["name", "type"],
+        },
+      },
+    },
+    required: ["suggestions"],
+  },
+};
+
+export interface CategorySuggestion {
+  name: string;
+  type: "INCOME" | "EXPENSE";
+}
+
+export async function suggestCategories(
+  businessDescription: string,
+): Promise<CategorySuggestion[]> {
+  const { suggestions } = await callStructured<{
+    suggestions: CategorySuggestion[];
+  }>({
+    system: SUGGEST_CATEGORIES_SYSTEM_PROMPT,
+    userText: `Business description: ${businessDescription}`,
+    tool: SUGGEST_CATEGORIES_TOOL,
+    maxTokens: 512,
+  });
+  return suggestions;
+}

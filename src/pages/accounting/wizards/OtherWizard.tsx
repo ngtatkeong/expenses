@@ -3,12 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../../api/client";
 import type { Account } from "../../../api/accountingTypes";
 import { formatMoney } from "../../../utils/format";
+import { useAiEnabled } from "../../../hooks/useAiEnabled";
 import WizardShell from "./WizardShell";
 
 const STEPS = ["What happened?", "Which accounts?", "Review & confirm"];
 
+interface ParsedOtherTransaction {
+  description: string;
+  amount: number;
+  toAccountId?: string;
+  fromAccountId?: string;
+}
+
 export default function OtherWizard() {
   const navigate = useNavigate();
+  const aiEnabled = useAiEnabled();
   const [step, setStep] = useState(0);
   const [accounts, setAccounts] = useState<Account[]>([]);
 
@@ -21,9 +30,39 @@ export default function OtherWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiFilled, setAiFilled] = useState(false);
+
   useEffect(() => {
     api.get<Account[]>("/accounting/accounts").then(setAccounts);
   }, []);
+
+  async function fillFromText() {
+    if (!aiText.trim()) return;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const parsed = await api.post<ParsedOtherTransaction>(
+        "/ai/parse-other-transaction-text",
+        { text: aiText },
+      );
+      setDescription(parsed.description);
+      setAmount(String(parsed.amount));
+      if (parsed.toAccountId) setToAccountId(parsed.toAccountId);
+      if (parsed.fromAccountId) setFromAccountId(parsed.fromAccountId);
+      setAiFilled(true);
+    } catch (err) {
+      setAiError(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't read that — try filling it in manually",
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function submit() {
     setError("");
@@ -75,6 +114,31 @@ export default function OtherWizard() {
         onNext={() => setStep(1)}
         nextDisabled={!description.trim() || !Number(amount)}
       >
+        {aiEnabled && (
+          <div className="filters-row" style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder='✨ Or just describe it: "owner put in $5,000 cash as capital"'
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-sm"
+              onClick={fillFromText}
+              disabled={aiBusy || !aiText.trim()}
+            >
+              {aiBusy ? "Reading…" : "Fill this in"}
+            </button>
+          </div>
+        )}
+        {aiError && <p className="error-text small">{aiError}</p>}
+        {aiFilled && (
+          <p className="muted small" style={{ marginBottom: 8 }}>
+            Filled in below — check it, then continue. (Accounts on the next
+            step too, if AI could tell.)
+          </p>
+        )}
         <div className="filters-row">
           <label className="field" style={{ flex: 1 }}>
             What happened?

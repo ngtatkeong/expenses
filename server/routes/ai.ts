@@ -7,12 +7,16 @@ import {
   parseExpenseText,
   checkExpensePolicy,
   generateApprovalNote,
+  checkReceiptMatch,
 } from "../lib/expenseAi.js";
 import {
   parseTransactionText,
   draftPaymentReminder,
   computeCashFlowForecast,
   reconcileStatement,
+  parseOtherTransactionText,
+  parsePaymentText,
+  suggestCategories,
 } from "../lib/accountingAi.js";
 
 export const aiRouter = Router();
@@ -159,3 +163,53 @@ aiRouter.post(
     res.json(result);
   },
 );
+
+// ---- Accounting: "record something else" natural-language entry ----
+
+aiRouter.post(
+  "/parse-other-transaction-text",
+  requireRole("ADMIN"),
+  async (req, res) => {
+    const { text } = req.body as { text?: string };
+    if (!text?.trim())
+      return res.status(400).json({ error: "text is required" });
+    const parsed = await parseOtherTransactionText(text);
+    res.json(parsed);
+  },
+);
+
+// ---- Accounting: payment natural-language entry ----
+
+aiRouter.post("/parse-payment-text", requireRole("ADMIN"), async (req, res) => {
+  const { text } = req.body as { text?: string };
+  if (!text?.trim()) return res.status(400).json({ error: "text is required" });
+  const parsed = await parsePaymentText(text);
+  res.json(parsed);
+});
+
+// ---- Accounting: AI-suggested starter categories ----
+
+aiRouter.post("/suggest-categories", requireRole("ADMIN"), async (req, res) => {
+  const { businessDescription } = req.body as { businessDescription?: string };
+  if (!businessDescription?.trim()) {
+    return res.status(400).json({ error: "businessDescription is required" });
+  }
+  const suggestions = await suggestCategories(businessDescription);
+  res.json({ suggestions });
+});
+
+// ---- Expenses: receipt-vs-claim mismatch check ----
+
+aiRouter.post("/check-receipt-match", async (req, res) => {
+  const { expenseId, receiptText } = req.body as {
+    expenseId?: string;
+    receiptText?: string;
+  };
+  if (!expenseId || !receiptText?.trim()) {
+    return res
+      .status(400)
+      .json({ error: "expenseId and receiptText are required" });
+  }
+  const result = await checkReceiptMatch(expenseId, receiptText);
+  res.json(result);
+});

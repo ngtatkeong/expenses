@@ -250,3 +250,47 @@ export async function generateApprovalNote(expenseId: string): Promise<{
     },
   );
 }
+
+// ---- Receipt-vs-claim mismatch check ----
+
+const RECEIPT_MATCH_SYSTEM_PROMPT = `Compare the OCR text from an uploaded receipt image against the amount and vendor claimed on an expense record. Decide if they plausibly match.
+
+Rules:
+1. OCR text is often messy -- allow for minor formatting differences, but the vendor name and total amount should be recognizably the same transaction.
+2. Only flag a mismatch if the receipt clearly shows a different vendor or a total amount that doesn't reasonably match the claimed amount (allow small rounding/tip differences).
+3. If the OCR text is too garbled to read a vendor or amount at all, say so rather than guessing a mismatch.
+
+You must respond by calling the emit_receipt_check tool.`;
+
+const RECEIPT_MATCH_TOOL = {
+  name: "emit_receipt_check",
+  description: "Emit whether the receipt matches the claimed expense.",
+  input_schema: {
+    type: "object",
+    properties: {
+      matches: { type: "boolean" },
+      note: {
+        type: "string",
+        description: "One short sentence explaining the match or mismatch.",
+      },
+    },
+    required: ["matches", "note"],
+  },
+};
+
+export async function checkReceiptMatch(
+  expenseId: string,
+  receiptText: string,
+): Promise<{ matches: boolean; note: string }> {
+  const expense = await prisma.expense.findUniqueOrThrow({
+    where: { id: expenseId },
+  });
+  const userText = `CLAIMED EXPENSE:\nVendor: ${expense.vendor}\nAmount: ${expense.amountTotal} ${expense.currency}\n\nRECEIPT OCR TEXT:\n${receiptText}`;
+
+  return callStructured<{ matches: boolean; note: string }>({
+    system: RECEIPT_MATCH_SYSTEM_PROMPT,
+    userText,
+    tool: RECEIPT_MATCH_TOOL,
+    maxTokens: 300,
+  });
+}

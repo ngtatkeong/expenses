@@ -206,6 +206,23 @@ export default function IrasWizard() {
             point, not a final answer.
           </div>
 
+          {!gstRegistered && summary.revenue >= 1_000_000 && (
+            <div className="callout callout-warn" style={{ marginBottom: 16 }}>
+              Your revenue for this period is over S$1,000,000. GST registration
+              becomes compulsory once your taxable turnover exceeds S$1M over a
+              rolling 12 months (or is expected to in the next 12 months) — you
+              marked the company as not GST-registered, so it's worth checking
+              whether you've crossed that threshold.{" "}
+              <a
+                href="https://www.iras.gov.sg/taxes/goods-services-tax-(gst)/basics-of-gst/do-i-need-to-register-for-gst"
+                target="_blank"
+                rel="noreferrer"
+              >
+                IRAS: Do I need to register for GST? ↗
+              </a>
+            </div>
+          )}
+
           <div className="filters-row" style={{ marginBottom: 16 }}>
             <a className="btn" href={pdfUrl()} target="_blank" rel="noreferrer">
               📄 Download summary (PDF)

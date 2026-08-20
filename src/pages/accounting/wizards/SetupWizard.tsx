@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../../api/client";
 import type { Account, AccountType } from "../../../api/accountingTypes";
+import { useAiEnabled } from "../../../hooks/useAiEnabled";
 import WizardShell from "./WizardShell";
+
+interface CategorySuggestion {
+  name: string;
+  type: "INCOME" | "EXPENSE";
+}
 
 const FRIENDLY_TYPES: { value: AccountType; label: string; hint: string }[] = [
   {
@@ -36,6 +42,7 @@ const STEPS = ["Get started", "Add your own (optional)", "Done"];
 
 export default function SetupWizard() {
   const navigate = useNavigate();
+  const aiEnabled = useAiEnabled();
   const [step, setStep] = useState(0);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [seeding, setSeeding] = useState(false);
@@ -44,6 +51,15 @@ export default function SetupWizard() {
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("EXPENSE");
   const [added, setAdded] = useState<string[]>([]);
+
+  const [businessDescription, setBusinessDescription] = useState("");
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestError, setSuggestError] = useState("");
+  const [suggestions, setSuggestions] = useState<CategorySuggestion[]>([]);
+  const [checkedSuggestions, setCheckedSuggestions] = useState<
+    Record<number, boolean>
+  >({});
+  const [addingSuggested, setAddingSuggested] = useState(false);
 
   function load() {
     api.get<Account[]>("/accounting/accounts").then(setAccounts);
@@ -85,6 +101,56 @@ export default function SetupWizard() {
       setError(
         err instanceof ApiError ? err.message : "Failed to add category",
       );
+    }
+  }
+
+  async function suggestFromDescription() {
+    if (!businessDescription.trim()) return;
+    setSuggestBusy(true);
+    setSuggestError("");
+    try {
+      const { suggestions: result } = await api.post<{
+        suggestions: CategorySuggestion[];
+      }>("/ai/suggest-categories", { businessDescription });
+      setSuggestions(result);
+      setCheckedSuggestions(
+        Object.fromEntries(result.map((_, i) => [i, true])),
+      );
+    } catch (err) {
+      setSuggestError(
+        err instanceof ApiError ? err.message : "Couldn't get suggestions",
+      );
+    } finally {
+      setSuggestBusy(false);
+    }
+  }
+
+  async function addSelectedSuggestions() {
+    setAddingSuggested(true);
+    setError("");
+    try {
+      let nextCode =
+        Math.max(0, ...accounts.map((a) => Number(a.code) || 0)) || 9000;
+      const addedNames: string[] = [];
+      for (let i = 0; i < suggestions.length; i++) {
+        if (!checkedSuggestions[i]) continue;
+        nextCode += 1;
+        await api.post("/accounting/accounts", {
+          code: String(nextCode),
+          name: suggestions[i].name,
+          type: suggestions[i].type,
+        });
+        addedNames.push(suggestions[i].name);
+      }
+      setAdded((prev) => [...prev, ...addedNames]);
+      setSuggestions([]);
+      load();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Failed to add categories",
+      );
+    } finally {
+      setAddingSuggested(false);
     }
   }
 
@@ -138,6 +204,69 @@ export default function SetupWizard() {
         nextLabel="Continue"
         error={error}
       >
+        {aiEnabled && (
+          <div className="panel" style={{ marginBottom: 16 }}>
+            <p style={{ marginTop: 0, fontWeight: 600 }}>
+              ✨ Not sure what you need? Describe your business
+            </p>
+            <div className="filters-row">
+              <input
+                type="text"
+                placeholder='e.g. "I run a small freelance graphic design studio"'
+                value={businessDescription}
+                onChange={(e) => setBusinessDescription(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn btn-sm"
+                onClick={suggestFromDescription}
+                disabled={suggestBusy || !businessDescription.trim()}
+              >
+                {suggestBusy ? "Thinking…" : "Suggest categories"}
+              </button>
+            </div>
+            {suggestError && <p className="error-text small">{suggestError}</p>}
+            {suggestions.length > 0 && (
+              <>
+                <ul style={{ listStyle: "none", padding: 0, marginTop: 10 }}>
+                  {suggestions.map((s, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!checkedSuggestions[i]}
+                          onChange={(e) =>
+                            setCheckedSuggestions((prev) => ({
+                              ...prev,
+                              [i]: e.target.checked,
+                            }))
+                          }
+                        />
+                        {s.name}{" "}
+                        <span className="muted small">
+                          ({s.type === "INCOME" ? "income" : "expense"})
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="btn btn-sm"
+                  onClick={addSelectedSuggestions}
+                  disabled={addingSuggested}
+                >
+                  {addingSuggested ? "Adding…" : "+ Add selected"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <div className="filters-row">
           <label className="field" style={{ flex: 1 }}>
             Name

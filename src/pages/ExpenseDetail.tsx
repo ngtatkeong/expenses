@@ -32,6 +32,11 @@ export default function ExpenseDetail() {
   const aiEnabled = useAiEnabled();
   const [approvalNote, setApprovalNote] = useState<ApprovalNote | null>(null);
   const [approvalNoteLoading, setApprovalNoteLoading] = useState(false);
+  const [receiptCheck, setReceiptCheck] = useState<{
+    matches: boolean;
+    note: string;
+  } | null>(null);
+  const [receiptChecking, setReceiptChecking] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -149,14 +154,40 @@ export default function ExpenseDetail() {
     }
   }
 
+  async function checkReceiptAgainstClaim(file: File) {
+    setReceiptChecking(true);
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng", 1);
+      const {
+        data: { text },
+      } = await worker.recognize(file);
+      await worker.terminate();
+      if (!text.trim() || !id) return;
+      const result = await api.post<{ matches: boolean; note: string }>(
+        "/ai/check-receipt-match",
+        { expenseId: id, receiptText: text },
+      );
+      setReceiptCheck(result);
+    } catch {
+      // OCR/AI check is a bonus nicety -- never block the upload on it.
+    } finally {
+      setReceiptChecking(false);
+    }
+  }
+
   async function uploadReceipt(file: File) {
     setBusy(true);
     setError("");
+    setReceiptCheck(null);
     try {
       const form = new FormData();
       form.append("file", file);
       await api.post(`/receipts/expense/${id}`, form);
       load();
+      if (aiEnabled && file.type.startsWith("image/")) {
+        checkReceiptAgainstClaim(file);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Upload failed");
     } finally {
@@ -275,6 +306,19 @@ export default function ExpenseDetail() {
             </label>
           )}
         </div>
+        {receiptChecking && (
+          <p className="muted small">
+            ✨ Checking receipt against the claimed amount…
+          </p>
+        )}
+        {receiptCheck && (
+          <div
+            className={`callout ${receiptCheck.matches ? "callout-info" : "callout-warn"}`}
+            style={{ marginBottom: 10 }}
+          >
+            ✨ {receiptCheck.note}
+          </div>
+        )}
         {expense.receipts.length === 0 ? (
           <p className="muted small">No receipts attached.</p>
         ) : (
