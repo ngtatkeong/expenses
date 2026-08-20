@@ -46,6 +46,12 @@ const TASKS = [
     title: "Prepare your IRAS tax filing summary",
     desc: "The revenue and profit figures you'll need for Form C-S / ECI, ready to download.",
   },
+  {
+    to: "/accounting/wizards/insights",
+    icon: "✨",
+    title: "AI Insights",
+    desc: "Money owed to you, money you owe, and anything worth watching — in plain English.",
+  },
 ];
 
 export default function AccountingHome() {

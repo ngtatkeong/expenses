@@ -26,6 +26,8 @@ import PaymentWizard from "./pages/accounting/wizards/PaymentWizard";
 import OtherWizard from "./pages/accounting/wizards/OtherWizard";
 import ReportsWizard from "./pages/accounting/wizards/ReportsWizard";
 import IrasWizard from "./pages/accounting/wizards/IrasWizard";
+import InsightsWizard from "./pages/accounting/wizards/InsightsWizard";
+import ExpenseInsights from "./pages/ExpenseInsights";
 import "./App.css";
 
 function RequireAdmin({ children }: { children: ReactNode }) {
@@ -87,6 +89,9 @@ function Shell() {
               </NavLink>
               <NavLink to="/settings" className="nav-link">
                 Settings
+              </NavLink>
+              <NavLink to="/ai-insights" className="nav-link">
+                AI Insights
               </NavLink>
               <div className="nav-section-label">Accounting</div>
               <NavLink to="/accounting" end className="nav-link">
@@ -157,6 +162,14 @@ function Shell() {
           />
           <Route path="/account" element={<Account />} />
           <Route
+            path="/ai-insights"
+            element={
+              <RequireAdmin>
+                <ExpenseInsights />
+              </RequireAdmin>
+            }
+          />
+          <Route
             path="/accounting"
             element={
               <RequireAdmin>
@@ -217,6 +230,14 @@ function Shell() {
             element={
               <RequireAdmin>
                 <IrasWizard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/accounting/wizards/insights"
+            element={
+              <RequireAdmin>
+                <InsightsWizard />
               </RequireAdmin>
             }
           />
